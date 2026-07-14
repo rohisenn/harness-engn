@@ -1,9 +1,8 @@
 """
-Thin, provider-agnostic wrapper around the Anthropic and OpenAI SDKs.
+Thin, provider-agnostic wrapper around the Google GenAI and Groq/Grok APIs.
 
 The rest of the agent talks to `LLMClient` and never has to know which
-provider is behind it. This is the seam we'll use later to add model
-switching, local models, etc. (Milestone: "Model switching").
+provider is behind it.
 """
 
 from __future__ import annotations
@@ -24,59 +23,82 @@ class LLMClient:
         self._client = self._build_client()
 
     def _build_client(self) -> Any:
-        if self.config.provider == "anthropic":
-            if not self.config.anthropic_api_key:
+        if self.config.provider == "gemini":
+            if not self.config.gemini_api_key:
                 raise LLMError(
-                    "ANTHROPIC_API_KEY is not set. Add it to your .env file "
-                    "(see .env.example)."
+                    "GOOGLE_API_KEY (or GEMINI_API_KEY) is not set. Add it to your .env file."
                 )
-            import anthropic
+            from google import genai
 
-            return anthropic.Anthropic(api_key=self.config.anthropic_api_key)
+            return genai.Client(api_key=self.config.gemini_api_key)
 
-        if not self.config.openai_api_key:
-            raise LLMError(
-                "OPENAI_API_KEY is not set. Add it to your .env file "
-                "(see .env.example)."
+        elif self.config.provider in ("groq", "grok"):
+            if not self.config.groq_api_key:
+                raise LLMError(
+                    "GROK_API_KEY (or GROQ_API_KEY) is not set. Add it to your .env file."
+                )
+            import openai
+
+            return openai.OpenAI(
+                api_key=self.config.groq_api_key,
+                base_url="https://api.groq.com/openai/v1",
             )
-        import openai
-
-        return openai.OpenAI(api_key=self.config.openai_api_key)
+        else:
+            raise LLMError(f"Unsupported provider: {self.config.provider}")
 
     def stream(self, system: str, messages: list[dict[str, str]]) -> Iterator[str]:
         """
         Yields response text incrementally as it streams in from the model.
         `messages` is a list of {"role": "user"|"assistant", "content": str}.
         """
-        if self.config.provider == "anthropic":
-            yield from self._stream_anthropic(system, messages)
+        if self.config.provider == "gemini":
+            yield from self._stream_gemini(system, messages)
         else:
-            yield from self._stream_openai(system, messages)
+            yield from self._stream_groq(system, messages)
 
-    def _stream_anthropic(self, system: str, messages: list[dict[str, str]]) -> Iterator[str]:
+    def _stream_gemini(self, system: str, messages: list[dict[str, str]]) -> Iterator[str]:
         try:
-            with self._client.messages.stream(
-                model=self.config.anthropic_model,
-                max_tokens=self.config.max_tokens,
-                system=system,
-                messages=messages,
-            ) as stream:
-                yield from stream.text_stream
-        except Exception as exc:  # noqa: BLE001 - surface a clean error to the CLI
-            raise LLMError(f"Anthropic API call failed: {exc}") from exc
+            from google.genai import types
 
-    def _stream_openai(self, system: str, messages: list[dict[str, str]]) -> Iterator[str]:
+            contents = []
+            for msg in messages:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append(
+                    types.Content(
+                        role=role,
+                        parts=[types.Part.from_text(text=msg["content"])]
+                    )
+                )
+
+            config = types.GenerateContentConfig(
+                system_instruction=system,
+                max_output_tokens=self.config.max_tokens,
+            )
+
+            response = self._client.models.generate_content_stream(
+                model=self.config.gemini_model,
+                contents=contents,
+                config=config,
+            )
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+        except Exception as exc:  # noqa: BLE001
+            raise LLMError(f"Gemini API call failed: {exc}") from exc
+
+    def _stream_groq(self, system: str, messages: list[dict[str, str]]) -> Iterator[str]:
         try:
             full_messages = [{"role": "system", "content": system}, *messages]
-            stream = self._client.chat.completions.create(
-                model=self.config.openai_model,
+            with self._client.chat.completions.create(
+                model=self.config.groq_model,
                 max_tokens=self.config.max_tokens,
                 messages=full_messages,
                 stream=True,
-            )
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta
+            ) as stream:
+                for chunk in stream:
+                    if chunk.choices:
+                        delta = chunk.choices[0].delta.content
+                        if delta:
+                            yield delta
         except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"OpenAI API call failed: {exc}") from exc
+            raise LLMError(f"{self.config.provider.capitalize()} API call failed: {exc}") from exc

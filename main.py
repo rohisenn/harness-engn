@@ -74,7 +74,7 @@ def run_interactive(client: LLMClient) -> None:
 @click.argument("task", required=False)
 @click.option(
     "--provider",
-    type=click.Choice(["anthropic", "openai"]),
+    type=click.Choice(["gemini", "groq", "grok"]),
     default=None,
     help="Override the LLM provider (defaults to HARNESS_PROVIDER in .env).",
 )

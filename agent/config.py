@@ -21,41 +21,49 @@ load_dotenv()
 @dataclass(frozen=True)
 class Config:
     provider: str
-    anthropic_api_key: str | None
-    anthropic_model: str
-    openai_api_key: str | None
-    openai_model: str
+    gemini_api_key: str | None
+    gemini_model: str
+    groq_api_key: str | None
+    groq_model: str
     max_tokens: int
 
     @property
     def active_model(self) -> str:
-        return self.anthropic_model if self.provider == "anthropic" else self.openai_model
+        if self.provider == "gemini":
+            return self.gemini_model
+        elif self.provider in ("groq", "grok"):
+            return self.groq_model
+        return ""
 
     @property
     def active_api_key(self) -> str | None:
-        return self.anthropic_api_key if self.provider == "anthropic" else self.openai_api_key
+        if self.provider == "gemini":
+            return self.gemini_api_key
+        elif self.provider in ("groq", "grok"):
+            return self.groq_api_key
+        return None
 
 
 def load_config(provider_override: str | None = None, model_override: str | None = None) -> Config:
-    provider = (provider_override or os.getenv("HARNESS_PROVIDER", "anthropic")).lower()
+    provider = (provider_override or os.getenv("HARNESS_PROVIDER", "gemini")).lower()
 
-    if provider not in ("anthropic", "openai"):
+    if provider not in ("gemini", "groq", "grok"):
         raise ValueError(
-            f"Unknown provider '{provider}'. Expected 'anthropic' or 'openai'."
+            f"Unknown provider '{provider}'. Expected 'gemini', 'groq', or 'grok'."
         )
 
-    anthropic_model = model_override if (model_override and provider == "anthropic") else os.getenv(
-        "HARNESS_ANTHROPIC_MODEL", "claude-sonnet-4-6"
+    gemini_model = model_override if (model_override and provider == "gemini") else os.getenv(
+        "HARNESS_GEMINI_MODEL", "gemini-3.5-flash"
     )
-    openai_model = model_override if (model_override and provider == "openai") else os.getenv(
-        "HARNESS_OPENAI_MODEL", "gpt-4o"
+    groq_model = model_override if (model_override and provider in ("groq", "grok")) else os.getenv(
+        "HARNESS_GROQ_MODEL", os.getenv("HARNESS_GROK_MODEL", "llama-3.3-70b-versatile")
     )
 
     return Config(
         provider=provider,
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-        anthropic_model=anthropic_model,
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
-        openai_model=openai_model,
+        gemini_api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
+        gemini_model=gemini_model,
+        groq_api_key=os.getenv("GROK_API_KEY") or os.getenv("GROQ_API_KEY"),
+        groq_model=groq_model,
         max_tokens=int(os.getenv("HARNESS_MAX_TOKENS", "4096")),
     )
