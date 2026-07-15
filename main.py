@@ -37,12 +37,19 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from agent.config import load_config
+from agent.config import load_config, Config
 from agent.llm import LLMClient, LLMError
 from agent.prompts import SYSTEM_PROMPT
 from tools import run_tool
 
 console = Console()
+
+
+def get_console(config: Config) -> Console:
+    """Returns a Console configured with or without colors depending on config settings."""
+    if not config.color:
+        return Console(color_system=None, highlight=False)
+    return console
 
 
 def parse_tool_call(response: str) -> tuple[str, dict[str, str]] | None:
@@ -103,12 +110,13 @@ def parse_tool_call(response: str) -> tuple[str, dict[str, str]] | None:
 
 def run_single_turn(client: LLMClient, task: str) -> str:
     """Send one task to the model, streaming the response to the terminal, executing tools if requested."""
+    console = get_console(client.config)
     messages = [{"role": "user", "content": task}]
 
     while True:
         console.print()
-        with console.status("[bold cyan]harness is thinking...[/bold cyan]", spinner="dots"):
-            chunks = list(client.stream(system=SYSTEM_PROMPT, messages=messages))
+        console.print("[bold cyan]harness is thinking...[/bold cyan]")
+        chunks = list(client.stream(system=SYSTEM_PROMPT, messages=messages))
         response = "".join(chunks)
 
         tool_info = parse_tool_call(response)
@@ -130,6 +138,7 @@ def run_single_turn(client: LLMClient, task: str) -> str:
 
 
 def run_interactive(client: LLMClient) -> None:
+    console = get_console(client.config)
     console.print(
         "[bold cyan]harness[/bold cyan] interactive mode. "
         "Type a task, or 'exit' to quit.\n"
@@ -153,8 +162,8 @@ def run_interactive(client: LLMClient) -> None:
 
         while True:
             console.print()
-            with console.status("[bold cyan]harness is thinking...[/bold cyan]", spinner="dots"):
-                chunks = list(client.stream(system=SYSTEM_PROMPT, messages=history))
+            console.print("[bold cyan]harness is thinking...[/bold cyan]")
+            chunks = list(client.stream(system=SYSTEM_PROMPT, messages=history))
             response = "".join(chunks)
 
             tool_info = parse_tool_call(response)

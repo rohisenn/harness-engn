@@ -26,6 +26,7 @@ class Config:
     groq_api_key: str | None
     groq_model: str
     max_tokens: int
+    color: bool = True
 
     @property
     def active_model(self) -> str:
@@ -59,6 +60,10 @@ def load_config(provider_override: str | None = None, model_override: str | None
         "HARNESS_GROQ_MODEL", os.getenv("HARNESS_GROK_MODEL", "llama-3.3-70b-versatile")
     )
 
+    no_color = os.getenv("NO_COLOR") is not None
+    harness_color_env = os.getenv("HARNESS_COLOR", "true").lower()
+    color = not no_color and (harness_color_env not in ("false", "0", "no"))
+
     return Config(
         provider=provider,
         gemini_api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
@@ -66,4 +71,5 @@ def load_config(provider_override: str | None = None, model_override: str | None
         groq_api_key=os.getenv("GROK_API_KEY") or os.getenv("GROQ_API_KEY"),
         groq_model=groq_model,
         max_tokens=int(os.getenv("HARNESS_MAX_TOKENS", "4096")),
+        color=color,
     )

@@ -34,3 +34,20 @@ def test_model_override_only_applies_to_selected_provider():
     config = load_config(provider_override="gemini", model_override="custom-gemini-model")
     assert config.gemini_model == "custom-gemini-model"
     assert config.active_model == "custom-gemini-model"
+
+
+def test_config_color(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("HARNESS_COLOR", raising=False)
+    config = load_config()
+    assert config.color is True
+
+    monkeypatch.setenv("NO_COLOR", "1")
+    config = load_config()
+    assert config.color is False
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("HARNESS_COLOR", "false")
+    config = load_config()
+    assert config.color is False
+
