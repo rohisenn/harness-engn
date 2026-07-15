@@ -147,3 +147,21 @@ def test_write_file_directory_creation():
         if os.path.exists(dir_path):
             os.rmdir(dir_path)
 
+
+def test_run_command_success():
+    res = run_tool("run_command", command="python -c \"print('Hello from test')\"")
+    assert "Exit Code: 0" in res
+    assert "Standard Output:" in res
+    assert "Hello from test" in res
+
+
+def test_run_command_failure():
+    res = run_tool("run_command", command="python -c \"import sys; sys.exit(42)\"")
+    assert "Exit Code: 42" in res
+
+
+def test_run_command_timeout():
+    res = run_tool("run_command", command="python -c \"import time; time.sleep(5)\"", timeout=1)
+    assert "timed out after 1 seconds" in res
+
+

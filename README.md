@@ -16,9 +16,9 @@ below is a fully working system in itself, not a stub.
 ## Status
 
 - [x] **Milestone 1** — CLI that talks to an LLM
-- [ ] Milestone 2 — Read files
-- [ ] Milestone 3 — Edit files
-- [ ] Milestone 4 — Execute terminal commands
+- [x] Milestone 2 — Read files
+- [x] Milestone 3 — Edit files
+- [x] Milestone 4 — Execute terminal commands
 - [ ] Milestone 5 — Repository search
 - [ ] Milestone 6 — Planning
 - [ ] Milestone 7 — Memory
@@ -58,7 +58,7 @@ harness/
 │   ├── config.py      # loads .env once, exposes a typed Config object
 │   ├── llm.py          # provider-agnostic streaming LLM client
 │   └── prompts.py      # system prompt(s)
-├── tools/               # (empty for now — filesystem/terminal/search land in M2-M5)
+├── tools/               # filesystem/terminal command execution tools
 ├── tests/
 ├── main.py              # CLI entrypoint (click + rich)
 ├── requirements.txt

@@ -2,6 +2,7 @@ from tools.view_file import view_file
 from tools.list_dir import list_dir
 from tools.write_file import write_file
 from tools.edit_file import edit_file
+from tools.run_command import run_command
 
 # Registry of all tools available to the agent
 TOOLS = {
@@ -9,6 +10,7 @@ TOOLS = {
     "list_dir": list_dir,
     "write_file": write_file,
     "edit_file": edit_file,
+    "run_command": run_command,
 }
 
 def run_tool(name: str, **kwargs) -> str:
