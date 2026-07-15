@@ -94,11 +94,9 @@ def test_run_single_turn_with_tool_rejected(mock_confirm, mock_run_tool):
     mock_confirm.return_value = False
     
     mock_client = MagicMock(spec=LLMClient)
-    # The client will stream once to execute a tool, and we will feed it back the error output.
-    # The second streaming turn will return the final explanation response.
+    # The client will only stream once because the loop breaks immediately on tool rejection.
     mock_client.stream.side_effect = [
-        iter(['<tool_call name="view_file" path="test.txt" />']),
-        iter(['Tool execution was cancelled, so I stopped.'])
+        iter(['<tool_call name="view_file" path="test.txt" />'])
     ]
     mock_client.config = Config(
         provider="gemini",
@@ -111,8 +109,8 @@ def test_run_single_turn_with_tool_rejected(mock_confirm, mock_run_tool):
     
     response = run_single_turn(mock_client, "Read test.txt")
     
-    assert response == "Tool execution was cancelled, so I stopped."
+    assert response == "Tool execution cancelled by the user."
     mock_run_tool.assert_not_called()
-    assert mock_client.stream.call_count == 2
+    assert mock_client.stream.call_count == 1
     mock_confirm.assert_called_once_with("Do you want to execute this tool call?", default=True)
 

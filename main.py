@@ -101,12 +101,11 @@ def run_single_turn(client: LLMClient, task: str) -> str:
             if click.confirm("Do you want to execute this tool call?", default=True):
                 result = run_tool(tool_name, **tool_args)
                 console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+                messages.append({"role": "assistant", "content": response})
+                messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
             else:
-                result = "Error: Tool execution cancelled by the user."
-                console.print("[yellow]Tool execution cancelled by user.[/yellow]")
-
-            messages.append({"role": "assistant", "content": response})
-            messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+                console.print("[yellow]Tool execution cancelled by user. Returning control to you.[/yellow]")
+                return "Tool execution cancelled by the user."
         else:
             console.print(Panel(Markdown(response), title="harness", border_style="cyan"))
             return response
@@ -148,12 +147,11 @@ def run_interactive(client: LLMClient) -> None:
                 if click.confirm("Do you want to execute this tool call?", default=True):
                     result = run_tool(tool_name, **tool_args)
                     console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+                    history.append({"role": "assistant", "content": response})
+                    history.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
                 else:
-                    result = "Error: Tool execution cancelled by the user."
-                    console.print("[yellow]Tool execution cancelled by user.[/yellow]")
-
-                history.append({"role": "assistant", "content": response})
-                history.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+                    console.print("[yellow]Tool execution cancelled by user. Returning control to you.[/yellow]")
+                    break
             else:
                 console.print(Panel(Markdown(response), title="harness", border_style="cyan"))
                 history.append({"role": "assistant", "content": response})
