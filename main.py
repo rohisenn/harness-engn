@@ -98,8 +98,12 @@ def run_single_turn(client: LLMClient, task: str) -> str:
             tool_name, tool_args = tool_info
             console.print(f"[bold yellow]Tool Call:[/bold yellow] `{tool_name}` with args {tool_args}")
             
-            result = run_tool(tool_name, **tool_args)
-            console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+            if click.confirm("Do you want to execute this tool call?", default=True):
+                result = run_tool(tool_name, **tool_args)
+                console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+            else:
+                result = "Error: Tool execution cancelled by the user."
+                console.print("[yellow]Tool execution cancelled by user.[/yellow]")
 
             messages.append({"role": "assistant", "content": response})
             messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
@@ -141,8 +145,12 @@ def run_interactive(client: LLMClient) -> None:
                 tool_name, tool_args = tool_info
                 console.print(f"[bold yellow]Tool Call:[/bold yellow] `{tool_name}` with args {tool_args}")
 
-                result = run_tool(tool_name, **tool_args)
-                console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+                if click.confirm("Do you want to execute this tool call?", default=True):
+                    result = run_tool(tool_name, **tool_args)
+                    console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+                else:
+                    result = "Error: Tool execution cancelled by the user."
+                    console.print("[yellow]Tool execution cancelled by user.[/yellow]")
 
                 history.append({"role": "assistant", "content": response})
                 history.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
