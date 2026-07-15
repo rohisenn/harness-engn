@@ -11,8 +11,26 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import re
 import sys
+
+def init_win_ansi():
+    """Enable Virtual Terminal Processing on Windows to support ANSI escape sequences (colors, spinners)."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            # STD_OUTPUT_HANDLE is -11
+            stdout_handle = kernel32.GetStdHandle(-11)
+            mode = ctypes.c_ulong()
+            if kernel32.GetConsoleMode(stdout_handle, ctypes.byref(mode)):
+                # ENABLE_VIRTUAL_TERMINAL_PROCESSING is 0x0004
+                kernel32.SetConsoleMode(stdout_handle, mode.value | 0x0004)
+        except Exception:
+            pass
+
+init_win_ansi()
 
 import click
 from rich.console import Console
