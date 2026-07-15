@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import re
 import sys
 
 import click
@@ -21,22 +22,90 @@ from rich.panel import Panel
 from agent.config import load_config
 from agent.llm import LLMClient, LLMError
 from agent.prompts import SYSTEM_PROMPT
+from tools import run_tool
 
 console = Console()
 
 
+def parse_tool_call(response: str) -> tuple[str, dict[str, str]] | None:
+    """
+    Looks for a <tool_call name="tool_name" path="relative/path">body</tool_call>
+    or <tool_call name="tool_name" path="path" /> tag in the response.
+    Returns (tool_name, attributes_dict) if found, otherwise None.
+    """
+    # First search for full block tag: <tool_call name="name" path="path">body</tool_call>
+    match_block = re.search(
+        r'<tool_call\s+name="([^"]+)"\s+path="([^"]+)"\s*>(.*?)</tool_call>',
+        response,
+        re.DOTALL
+    )
+    if match_block:
+        tool_name = match_block.group(1)
+        path = match_block.group(2)
+        body = match_block.group(3)
+
+        if tool_name == "edit_file":
+            old_match = re.search(r'<old_content>(.*?)</old_content>', body, re.DOTALL)
+            new_match = re.search(r'<new_content>(.*?)</new_content>', body, re.DOTALL)
+            if old_match and new_match:
+                return tool_name, {
+                    "path": path,
+                    "old_content": old_match.group(1),
+                    "new_content": new_match.group(1)
+                }
+            return None
+
+        elif tool_name == "write_file":
+            # Strip initial/final newline immediately adjacent to tag bounds if present
+            content = body
+            if content.startswith("\n"):
+                content = content[1:]
+            if content.endswith("\n"):
+                content = content[:-1]
+            return tool_name, {
+                "path": path,
+                "content": content
+            }
+
+    # Fallback to inline syntax
+    match_inline = re.search(r'<tool_call\s+([^>]+)/?>', response)
+    if not match_inline:
+        return None
+
+    attributes_str = match_inline.group(1)
+    attrs = re.findall(r'(\w+)="([^"]*)"', attributes_str)
+    attrs_dict = dict(attrs)
+
+    if "name" not in attrs_dict:
+        return None
+
+    tool_name = attrs_dict.pop("name")
+    return tool_name, attrs_dict
+
+
 def run_single_turn(client: LLMClient, task: str) -> str:
-    """Send one task to the model, streaming the response to the terminal."""
+    """Send one task to the model, streaming the response to the terminal, executing tools if requested."""
     messages = [{"role": "user", "content": task}]
 
-    console.print()
-    full_response = ""
-    with console.status("[bold cyan]harness is thinking...[/bold cyan]", spinner="dots"):
-        chunks = list(client.stream(system=SYSTEM_PROMPT, messages=messages))
-    full_response = "".join(chunks)
+    while True:
+        console.print()
+        with console.status("[bold cyan]harness is thinking...[/bold cyan]", spinner="dots"):
+            chunks = list(client.stream(system=SYSTEM_PROMPT, messages=messages))
+        response = "".join(chunks)
 
-    console.print(Panel(Markdown(full_response), title="harness", border_style="cyan"))
-    return full_response
+        tool_info = parse_tool_call(response)
+        if tool_info:
+            tool_name, tool_args = tool_info
+            console.print(f"[bold yellow]Tool Call:[/bold yellow] `{tool_name}` with args {tool_args}")
+            
+            result = run_tool(tool_name, **tool_args)
+            console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+
+            messages.append({"role": "assistant", "content": response})
+            messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+        else:
+            console.print(Panel(Markdown(response), title="harness", border_style="cyan"))
+            return response
 
 
 def run_interactive(client: LLMClient) -> None:
@@ -61,13 +130,26 @@ def run_interactive(client: LLMClient) -> None:
 
         history.append({"role": "user", "content": task})
 
-        console.print()
-        with console.status("[bold cyan]harness is thinking...[/bold cyan]", spinner="dots"):
-            chunks = list(client.stream(system=SYSTEM_PROMPT, messages=history))
-        response = "".join(chunks)
+        while True:
+            console.print()
+            with console.status("[bold cyan]harness is thinking...[/bold cyan]", spinner="dots"):
+                chunks = list(client.stream(system=SYSTEM_PROMPT, messages=history))
+            response = "".join(chunks)
 
-        console.print(Panel(Markdown(response), title="harness", border_style="cyan"))
-        history.append({"role": "assistant", "content": response})
+            tool_info = parse_tool_call(response)
+            if tool_info:
+                tool_name, tool_args = tool_info
+                console.print(f"[bold yellow]Tool Call:[/bold yellow] `{tool_name}` with args {tool_args}")
+
+                result = run_tool(tool_name, **tool_args)
+                console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+
+                history.append({"role": "assistant", "content": response})
+                history.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+            else:
+                console.print(Panel(Markdown(response), title="harness", border_style="cyan"))
+                history.append({"role": "assistant", "content": response})
+                break
 
 
 @click.command()
