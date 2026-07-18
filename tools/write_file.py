@@ -1,4 +1,5 @@
 import os
+from tools.security import is_sensitive_path
 
 def write_file(path: str, content: str) -> str:
     """
@@ -7,6 +8,9 @@ def write_file(path: str, content: str) -> str:
     """
     if not path:
         return "Error: Path is empty."
+        
+    if is_sensitive_path(path):
+        return f"Error: Access to sensitive file or directory '{path}' is restricted."
         
     target_path = os.path.abspath(path)
     cwd = os.path.abspath(os.getcwd())

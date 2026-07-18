@@ -1,4 +1,5 @@
 import os
+from tools.security import is_sensitive_path
 
 def view_file(path: str) -> str:
     """
@@ -7,6 +8,9 @@ def view_file(path: str) -> str:
     """
     if not path:
         return "Error: Path is empty."
+        
+    if is_sensitive_path(path):
+        return f"Error: Access to sensitive file or directory '{path}' is restricted."
     
     # Resolve the path relative to the current working directory
     target_path = os.path.abspath(path)

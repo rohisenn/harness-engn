@@ -1,5 +1,6 @@
 import os
 import fnmatch
+from tools.security import is_sensitive_path
 
 def search_files(pattern: str, path: str = ".") -> str:
     """
@@ -11,6 +12,9 @@ def search_files(pattern: str, path: str = ".") -> str:
         
     if not path:
         path = "."
+        
+    if is_sensitive_path(path):
+        return f"Error: Access to sensitive file or directory '{path}' is restricted."
 
     target_path = os.path.abspath(path)
     cwd = os.path.abspath(os.getcwd())
@@ -34,8 +38,11 @@ def search_files(pattern: str, path: str = ".") -> str:
             dirs[:] = [d for d in dirs if d not in ignored_dirs]
             
             for file in files:
+                full_path = os.path.join(root, file)
+                if is_sensitive_path(full_path):
+                    continue
+                    
                 if fnmatch.fnmatch(file, pattern):
-                    full_path = os.path.join(root, file)
                     rel_path = os.path.relpath(full_path, cwd)
                     # Normalize separators for cross-platform consistency
                     rel_path = rel_path.replace("\\", "/")

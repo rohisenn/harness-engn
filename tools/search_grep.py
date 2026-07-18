@@ -1,4 +1,5 @@
 import os
+from tools.security import is_sensitive_path
 
 def search_grep(query: str, path: str = ".") -> str:
     """
@@ -10,6 +11,9 @@ def search_grep(query: str, path: str = ".") -> str:
         
     if not path:
         path = "."
+        
+    if is_sensitive_path(path):
+        return f"Error: Access to sensitive file or directory '{path}' is restricted."
 
     target_path = os.path.abspath(path)
     cwd = os.path.abspath(os.getcwd())
@@ -45,11 +49,14 @@ def search_grep(query: str, path: str = ".") -> str:
             dirs[:] = [d for d in dirs if d not in ignored_dirs]
             
             for file in files:
+                full_path = os.path.join(root, file)
+                if is_sensitive_path(full_path):
+                    continue
+                    
                 _, ext = os.path.splitext(file)
                 if ext.lower() in ignored_extensions:
                     continue
                     
-                full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, cwd).replace("\\", "/")
                 
                 try:

@@ -40,6 +40,7 @@ from rich.panel import Panel
 from agent.config import load_config, Config
 from agent.llm import LLMClient, LLMError
 from agent.prompts import SYSTEM_PROMPT
+from agent.planning_prompts import PLANNING_SYSTEM_PROMPT, EXECUTION_SYSTEM_PROMPT
 from tools import run_tool
 
 console = Console()
@@ -137,6 +138,92 @@ def run_single_turn(client: LLMClient, task: str) -> str:
             return response
 
 
+def run_single_turn_with_planning(client: LLMClient, task: str) -> str:
+    """Send one task to the model, running a research, planning, and execution loop."""
+    console = get_console(client.config)
+    messages = [{"role": "user", "content": task}]
+
+    # 1. Research & Planning Phase
+    while True:
+        console.print()
+        console.print("[bold cyan]harness is researching and planning...[/bold cyan]")
+        chunks = list(client.stream(system=PLANNING_SYSTEM_PROMPT, messages=messages))
+        response = "".join(chunks)
+
+        tool_info = parse_tool_call(response)
+        if tool_info:
+            tool_name, tool_args = tool_info
+            
+            # Restrict tools during planning phase
+            if tool_name in ("edit_file", "run_command") or (tool_name == "write_file" and tool_args.get("path") != "plan.md"):
+                error_msg = f"Error: The tool '{tool_name}' is disabled during the Research & Planning Phase. You must write the plan to 'plan.md' first."
+                console.print(f"[bold red]{error_msg}[/bold red]")
+                messages.append({"role": "assistant", "content": response})
+                messages.append({"role": "user", "content": error_msg})
+                continue
+
+            console.print(f"[bold yellow]Tool Call (Planning):[/bold yellow] `{tool_name}` with args {tool_args}")
+            if click.confirm("Do you want to execute this tool call?", default=True):
+                result = run_tool(tool_name, **tool_args)
+                console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+                messages.append({"role": "assistant", "content": response})
+                messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+            else:
+                console.print("[yellow]Tool execution cancelled by user. Returning control to you.[/yellow]")
+                return "Tool execution cancelled by the user during planning."
+        else:
+            # Check if plan.md exists
+            if os.path.exists("plan.md"):
+                console.print(Panel(Markdown(response), title="harness (Planning Summary)", border_style="cyan"))
+                try:
+                    with open("plan.md", "r", encoding="utf-8") as f:
+                        plan_content = f.read()
+                except Exception as e:
+                    plan_content = f"Error reading plan.md: {e}"
+
+                console.print()
+                console.print(Panel(Markdown(plan_content), title="plan.md", border_style="yellow"))
+
+                if click.confirm("Do you approve this plan?", default=True):
+                    console.print("[bold green]Plan approved. Transitioning to Execution Phase...[/bold green]")
+                    break
+                else:
+                    feedback = click.prompt("Provide feedback/adjustments to the plan")
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({
+                        "role": "user",
+                        "content": f"The user rejected the plan. Feedback:\n{feedback}\nPlease update 'plan.md' to reflect this feedback."
+                    })
+            else:
+                prompt_msg = "Please write the proposed implementation plan to 'plan.md' using the write_file tool."
+                messages.append({"role": "assistant", "content": response})
+                messages.append({"role": "user", "content": prompt_msg})
+
+    # 2. Execution Phase
+    messages.append({"role": "user", "content": "The plan has been approved. Please execute the plan now."})
+    while True:
+        console.print()
+        console.print("[bold cyan]harness is executing plan...[/bold cyan]")
+        chunks = list(client.stream(system=EXECUTION_SYSTEM_PROMPT, messages=messages))
+        response = "".join(chunks)
+
+        tool_info = parse_tool_call(response)
+        if tool_info:
+            tool_name, tool_args = tool_info
+            console.print(f"[bold yellow]Tool Call (Execution):[/bold yellow] `{tool_name}` with args {tool_args}")
+            if click.confirm("Do you want to execute this tool call?", default=True):
+                result = run_tool(tool_name, **tool_args)
+                console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+                messages.append({"role": "assistant", "content": response})
+                messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+            else:
+                console.print("[yellow]Tool execution cancelled by user. Returning control to you.[/yellow]")
+                return "Tool execution cancelled by the user during execution."
+        else:
+            console.print(Panel(Markdown(response), title="harness (Execution Finished)", border_style="cyan"))
+            return response
+
+
 def run_interactive(client: LLMClient) -> None:
     console = get_console(client.config)
     console.print(
@@ -198,7 +285,12 @@ def run_interactive(client: LLMClient) -> None:
     default=None,
     help="Override the model name for the selected provider.",
 )
-def cli(task: str | None, provider: str | None, model: str | None) -> None:
+@click.option(
+    "--no-plan",
+    is_flag=True,
+    help="Skip the planning phase and run the task in one-shot execution mode.",
+)
+def cli(task: str | None, provider: str | None, model: str | None, no_plan: bool) -> None:
     """Send TASK to the coding agent. Omit TASK to start interactive mode."""
     try:
         config = load_config(provider_override=provider, model_override=model)
@@ -213,7 +305,10 @@ def cli(task: str | None, provider: str | None, model: str | None) -> None:
 
     if task:
         try:
-            run_single_turn(client, task)
+            if no_plan:
+                run_single_turn(client, task)
+            else:
+                run_single_turn_with_planning(client, task)
         except LLMError as exc:
             console.print(f"[bold red]Error:[/bold red] {exc}")
             sys.exit(1)
