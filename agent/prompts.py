@@ -32,7 +32,13 @@ Available tools:
    </new_content>
    </tool_call>
 
-5. **run_command**: Execute a terminal command in the workspace.
+5. **search_files**: Search for files in the workspace matching a glob pattern (e.g. `*.py` or `*main*`).
+   Syntax: <tool_call name="search_files" pattern="*search_pattern*" path="optional/path/to/search" />
+
+6. **search_grep**: Search for exact text matches of a query within file contents.
+   Syntax: <tool_call name="search_grep" query="search_query" path="optional/path/to/search" />
+
+7. **run_command**: Execute a terminal command in the workspace.
    Syntax: <tool_call name="run_command" command="pytest" />
 
 Instructions for tool use:

@@ -19,7 +19,7 @@ below is a fully working system in itself, not a stub.
 - [x] Milestone 2 — Read files
 - [x] Milestone 3 — Edit files
 - [x] Milestone 4 — Execute terminal commands
-- [ ] Milestone 5 — Repository search
+- [x] Milestone 5 — Repository search
 - [ ] Milestone 6 — Planning
 - [ ] Milestone 7 — Memory
 - [ ] Milestone 8 — Self-correction loop

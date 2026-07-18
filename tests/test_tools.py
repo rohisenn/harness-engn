@@ -165,3 +165,66 @@ def test_run_command_timeout():
     assert "timed out after 1 seconds" in res
 
 
+def test_search_files_success():
+    temp_dir = "temp_search_files_test"
+    os.makedirs(temp_dir, exist_ok=True)
+    f1 = os.path.join(temp_dir, "test_alpha.txt")
+    f2 = os.path.join(temp_dir, "test_beta.py")
+    f3 = os.path.join(temp_dir, "other.txt")
+    
+    with open(f1, "w") as f:
+        f.write("1")
+    with open(f2, "w") as f:
+        f.write("2")
+    with open(f3, "w") as f:
+        f.write("3")
+    
+    try:
+        res = run_tool("search_files", pattern="test_*.txt", path=temp_dir)
+        assert "Found 1 file(s)" in res
+        assert "temp_search_files_test/test_alpha.txt" in res
+        assert "temp_search_files_test/test_beta.py" not in res
+        
+        res2 = run_tool("search_files", pattern="test_*", path=temp_dir)
+        assert "Found 2 file(s)" in res2
+        assert "temp_search_files_test/test_alpha.txt" in res2
+        assert "temp_search_files_test/test_beta.py" in res2
+        
+        res3 = run_tool("search_files", pattern="xyz*", path=temp_dir)
+        assert "No files found matching pattern" in res3
+    finally:
+        for f in (f1, f2, f3):
+            if os.path.exists(f):
+                os.remove(f)
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+
+
+def test_search_grep_success():
+    temp_dir = "temp_search_grep_test"
+    os.makedirs(temp_dir, exist_ok=True)
+    f1 = os.path.join(temp_dir, "file1.txt")
+    f2 = os.path.join(temp_dir, "file2.py")
+    
+    with open(f1, "w", encoding="utf-8") as f:
+        f.write("apple banana\ncherry date\napple grape")
+    with open(f2, "w", encoding="utf-8") as f:
+        f.write("elderberry\nfig apple\ngrapefruit")
+        
+    try:
+        res = run_tool("search_grep", query="apple", path=temp_dir)
+        assert "Found 3 occurrence(s) of 'apple':" in res
+        assert "temp_search_grep_test/file1.txt:1: apple banana" in res
+        assert "temp_search_grep_test/file1.txt:3: apple grape" in res
+        assert "temp_search_grep_test/file2.py:2: fig apple" in res
+        
+        res2 = run_tool("search_grep", query="xyz_not_found", path=temp_dir)
+        assert "No occurrences of 'xyz_not_found' found" in res2
+    finally:
+        for f in (f1, f2):
+            if os.path.exists(f):
+                os.remove(f)
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+
+
