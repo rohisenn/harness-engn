@@ -1,4 +1,5 @@
 import subprocess
+from tools.security import is_sensitive_command
 
 def run_command(command: str, timeout: int = 30) -> str:
     """
@@ -7,6 +8,9 @@ def run_command(command: str, timeout: int = 30) -> str:
     """
     if not command:
         return "Error: Command is empty."
+        
+    if is_sensitive_command(command):
+        return f"Error: Command execution blocked. Access to sensitive files, directories, or environment variables is restricted."
 
     try:
         # Run command with shell=True, capturing stdout and stderr

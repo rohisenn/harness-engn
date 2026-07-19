@@ -8,8 +8,16 @@ from agent.config import Config
 
 def test_sensitive_path_restrictions():
     # Attempting to access sensitive files directly via view_file/write_file/edit_file should fail
+    # Test lowercase
     res_view = run_tool("view_file", path=".env")
     assert "Error: Access to sensitive file" in res_view
+    
+    # Test case-insensitivity (uppercase/mixed case)
+    res_view_upper = run_tool("view_file", path=".ENV")
+    assert "Error: Access to sensitive file" in res_view_upper
+    
+    res_view_mixed = run_tool("view_file", path=".Env.Local")
+    assert "Error: Access to sensitive file" in res_view_mixed
     
     res_write = run_tool("write_file", path="subdir/.env", content="SECRET")
     assert "Error: Access to sensitive file" in res_write
@@ -17,10 +25,10 @@ def test_sensitive_path_restrictions():
     res_edit = run_tool("edit_file", path=".env.local", old_content="A", new_content="B")
     assert "Error: Access to sensitive file" in res_edit
 
-    res_search_grep_path = run_tool("search_grep", query="something", path=".env")
+    res_search_grep_path = run_tool("search_grep", query="something", path=".ENV")
     assert "Error: Access to sensitive file" in res_search_grep_path
 
-    res_search_files_path = run_tool("search_files", pattern="*", path=".env")
+    res_search_files_path = run_tool("search_files", pattern="*", path=".Env.Local")
     assert "Error: Access to sensitive file" in res_search_files_path
 
 
@@ -102,3 +110,32 @@ def test_planning_flow_approved(mock_run_tool, mock_confirm):
     finally:
         if os.path.exists("plan.md"):
             os.remove("plan.md")
+
+
+def test_env_example_access():
+    filename = "temp_test_example.env.example"
+    if os.path.exists(filename):
+        os.remove(filename)
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("KEY=placeholder")
+    try:
+        res = run_tool("view_file", path=filename)
+        assert res == "KEY=placeholder"
+    finally:
+        if os.path.exists(filename):
+            os.remove(filename)
+
+
+def test_run_command_security():
+    res_cat = run_tool("run_command", command="cat .env")
+    assert "Error: Command execution blocked" in res_cat
+    
+    res_type = run_tool("run_command", command="type .ENV")
+    assert "Error: Command execution blocked" in res_type
+    
+    res_py = run_tool("run_command", command="python -c \"import os; print(os.environ)\"")
+    assert "Error: Command execution blocked" in res_py
+
+    res_printenv = run_tool("run_command", command="printenv")
+    assert "Error: Command execution blocked" in res_printenv
+
