@@ -9,15 +9,21 @@ def write_file(path: str, content: str) -> str:
     if not path:
         return "Error: Path is empty."
         
-    if is_sensitive_path(path):
-        return f"Error: Access to sensitive file or directory '{path}' is restricted."
+    try:
+        target_path = os.path.realpath(path)
+        cwd = os.path.realpath(os.getcwd())
+    except Exception as e:
+        return f"Error resolving path: {e}"
         
-    target_path = os.path.abspath(path)
-    cwd = os.path.abspath(os.getcwd())
-    
     # Security check: prevent writing outside workspace
-    if not target_path.startswith(cwd):
+    try:
+        if os.path.commonpath([cwd, target_path]) != cwd:
+            return f"Error: Path '{path}' is outside the workspace."
+    except ValueError:
         return f"Error: Path '{path}' is outside the workspace."
+        
+    if is_sensitive_path(target_path):
+        return f"Error: Access to sensitive file or directory '{path}' is restricted."
         
     try:
         # Create parent directories if they don't exist

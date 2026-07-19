@@ -12,15 +12,21 @@ def search_grep(query: str, path: str = ".") -> str:
     if not path:
         path = "."
         
-    if is_sensitive_path(path):
-        return f"Error: Access to sensitive file or directory '{path}' is restricted."
-
-    target_path = os.path.abspath(path)
-    cwd = os.path.abspath(os.getcwd())
-    
+    try:
+        target_path = os.path.realpath(path)
+        cwd = os.path.realpath(os.getcwd())
+    except Exception as e:
+        return f"Error resolving path: {e}"
+        
     # Security check: prevent searching outside the workspace
-    if not target_path.startswith(cwd):
+    try:
+        if os.path.commonpath([cwd, target_path]) != cwd:
+            return f"Error: Path '{path}' is outside the workspace."
+    except ValueError:
         return f"Error: Path '{path}' is outside the workspace."
+        
+    if is_sensitive_path(target_path):
+        return f"Error: Access to sensitive file or directory '{path}' is restricted."
         
     if not os.path.exists(target_path):
         return f"Error: Path '{path}' does not exist."

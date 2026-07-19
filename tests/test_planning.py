@@ -139,3 +139,44 @@ def test_run_command_security():
     res_printenv = run_tool("run_command", command="printenv")
     assert "Error: Command execution blocked" in res_printenv
 
+
+def test_suffix_traversal_blocked():
+    # Attempting to access a directory sharing the workspace prefix but outside workspace
+    cwd = os.path.realpath(os.getcwd())
+    sibling_path = cwd + "_attack"
+    
+    res = run_tool("view_file", path=sibling_path)
+    assert "is outside the workspace" in res or "restricted" in res
+    
+    res_list = run_tool("list_dir", path=sibling_path)
+    assert "is outside the workspace" in res_list or "restricted" in res_list
+
+
+def test_list_dir_restrictions():
+    # Attempting to list a sensitive directory directly
+    res = run_tool("list_dir", path=".git")
+    assert "is restricted" in res or "outside the workspace" in res
+
+    # Check listing a directory hides sensitive files
+    temp_dir = "temp_list_dir_security_test"
+    os.makedirs(temp_dir, exist_ok=True)
+    f_clean = os.path.join(temp_dir, "clean_file.txt")
+    f_env = os.path.join(temp_dir, ".env")
+    
+    with open(f_clean, "w", encoding="utf-8") as f:
+        f.write("public")
+    with open(f_env, "w", encoding="utf-8") as f:
+        f.write("secret")
+        
+    try:
+        res_list = run_tool("list_dir", path=temp_dir)
+        assert "clean_file.txt" in res_list
+        assert ".env" not in res_list
+    finally:
+        if os.path.exists(f_clean):
+            os.remove(f_clean)
+        if os.path.exists(f_env):
+            os.remove(f_env)
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+
