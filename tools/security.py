@@ -37,6 +37,10 @@ def is_sensitive_command(command: str) -> bool:
     if ".git" in cmd_lower:
         return True
         
+    # Check for harness directory (.harness) or test cache (.pytest_cache)
+    if ".harness" in cmd_lower or ".pytest_cache" in cmd_lower:
+        return True
+        
     # Check for virtual environments
     if re.search(r'\b\.?venv\b', cmd_lower) or ".venv" in cmd_lower:
         return True

@@ -139,6 +139,13 @@ def test_run_command_security():
     res_printenv = run_tool("run_command", command="printenv")
     assert "Error: Command execution blocked" in res_printenv
 
+    res_harness = run_tool("run_command", command="cat .harness/memory.json")
+    assert "Error: Command execution blocked" in res_harness
+
+    res_pytest_cache = run_tool("run_command", command="ls .pytest_cache")
+    assert "Error: Command execution blocked" in res_pytest_cache
+
+
 
 def test_suffix_traversal_blocked():
     # Attempting to access a directory sharing the workspace prefix but outside workspace

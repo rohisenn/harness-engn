@@ -55,6 +55,27 @@ def test_parse_tool_call():
     res = parse_tool_call('<tool_call path="abc" />')
     assert res is None
 
+    # Edge cases: attribute order reversed
+    res = parse_tool_call('<tool_call path="agent/llm.py" name="view_file" />')
+    assert res == ("view_file", {"path": "agent/llm.py"})
+
+    # Edge cases: spaces around equals
+    res = parse_tool_call('<tool_call name = "list_dir" path = "." />')
+    assert res == ("list_dir", {"path": "."})
+
+    # Edge cases: extra attributes
+    res = parse_tool_call('<tool_call name="list_dir" path="." depth="2" />')
+    assert res == ("list_dir", {"path": ".", "depth": "2"})
+
+    # Edge cases: block tool call with attributes reversed & spaces
+    res = parse_tool_call(
+        '<tool_call path = "temp.txt" name = "write_file" mode = "overwrite">\n'
+        'line 1\n'
+        '</tool_call>'
+    )
+    assert res == ("write_file", {"path": "temp.txt", "content": "line 1", "mode": "overwrite"})
+
+
 
 @patch("main.run_tool")
 @patch("click.confirm")

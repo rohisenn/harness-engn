@@ -56,57 +56,59 @@ def get_console(config: Config) -> Console:
 
 def parse_tool_call(response: str) -> tuple[str, dict[str, str]] | None:
     """
-    Looks for a <tool_call name="tool_name" path="relative/path">body</tool_call>
-    or <tool_call name="tool_name" path="path" /> tag in the response.
+    Looks for a <tool_call ...>body</tool_call> or <tool_call ... /> tag in the response.
     Returns (tool_name, attributes_dict) if found, otherwise None.
+    Supports attributes in any order, extra spaces, and optional trailing slash.
     """
-    # First search for full block tag: <tool_call name="name" path="path">body</tool_call>
-    match_block = re.search(
-        r'<tool_call\s+name="([^"]+)"\s+path="([^"]+)"\s*>(.*?)</tool_call>',
-        response,
-        re.DOTALL
-    )
-    if match_block:
-        tool_name = match_block.group(1)
-        path = match_block.group(2)
-        body = match_block.group(3)
-
-        if tool_name == "edit_file":
-            old_match = re.search(r'<old_content>(.*?)</old_content>', body, re.DOTALL)
-            new_match = re.search(r'<new_content>(.*?)</new_content>', body, re.DOTALL)
-            if old_match and new_match:
-                return tool_name, {
-                    "path": path,
-                    "old_content": old_match.group(1),
-                    "new_content": new_match.group(1)
-                }
-            return None
-
-        elif tool_name == "write_file":
-            # Strip initial/final newline immediately adjacent to tag bounds if present
-            content = body
-            if content.startswith("\n"):
-                content = content[1:]
-            if content.endswith("\n"):
-                content = content[:-1]
-            return tool_name, {
-                "path": path,
-                "content": content
-            }
-
-    # Fallback to inline syntax
-    match_inline = re.search(r'<tool_call\s+([^>]+)/?>', response)
-    if not match_inline:
+    # Find the opening tag <tool_call ...>
+    match_open = re.search(r'<tool_call\s+([^>]*?)(\/?)>', response, re.DOTALL)
+    if not match_open:
         return None
 
-    attributes_str = match_inline.group(1)
-    attrs = re.findall(r'(\w+)="([^"]*)"', attributes_str)
+    attributes_str = match_open.group(1)
+    is_inline = bool(match_open.group(2))
+
+    # Parse attributes using regex
+    attrs = re.findall(r'(\w+)\s*=\s*"([^"]*)"', attributes_str)
     attrs_dict = dict(attrs)
 
     if "name" not in attrs_dict:
         return None
 
     tool_name = attrs_dict.pop("name")
+
+    # If it's not inline, look for the closing </tool_call> tag
+    if not is_inline:
+        start_body_idx = match_open.end()
+        match_close = re.search(r'</tool_call>', response[start_body_idx:])
+        if match_close:
+            end_body_idx = start_body_idx + match_close.start()
+            body = response[start_body_idx:end_body_idx]
+
+            if tool_name == "edit_file":
+                old_match = re.search(r'<old_content>(.*?)</old_content>', body, re.DOTALL)
+                new_match = re.search(r'<new_content>(.*?)</new_content>', body, re.DOTALL)
+                if old_match and new_match:
+                    return tool_name, {
+                        **attrs_dict,
+                        "old_content": old_match.group(1),
+                        "new_content": new_match.group(1)
+                    }
+                return None
+
+            elif tool_name == "write_file":
+                # Strip initial/final newline immediately adjacent to tag bounds if present
+                content = body
+                if content.startswith("\n"):
+                    content = content[1:]
+                if content.endswith("\n"):
+                    content = content[:-1]
+                return tool_name, {
+                    **attrs_dict,
+                    "content": content
+                }
+
+    # Fallback/Inline behavior
     return tool_name, attrs_dict
 
 
