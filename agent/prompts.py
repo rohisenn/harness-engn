@@ -41,10 +41,20 @@ Available tools:
 7. **run_command**: Execute a terminal command in the workspace.
    Syntax: <tool_call name="run_command" command="pytest" />
 
+8. **remember_fact**: Save a persistent fact about this repository (e.g. project structure, commands, findings) to guide future runs.
+   Syntax: <tool_call name="remember_fact" fact="fact text here" />
+
+9. **forget_fact**: Remove a persistent fact from memory, if it matches any part of the saved fact.
+   Syntax: <tool_call name="forget_fact" fact="fact text to forget" />
+
+10. **list_facts**: List all currently saved persistent facts about this repository.
+    Syntax: <tool_call name="list_facts" />
+
 Instructions for tool use:
 - Choose the most specific tool. Prefer `edit_file` over `write_file` for small modifications to existing files.
 - Output ONLY the tag block. No preamble, no postamble, no markdown wrap (e.g. do not wrap the xml block in ```xml).
 - The execution result of the tool will be fed to you in the next message as a prompt.
 - Perform actions incrementally (one tool call at a time). Wait for the result before making subsequent edits.
+- **Do not automatically perform administrative memory updates (e.g., calling remember_fact, forget_fact, or list_facts) to keep repository status in sync unless the user's task is explicitly about managing memory/facts.**
 - Once the task is fully achieved, reply with your final explanation in plain text.
 """

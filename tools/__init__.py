@@ -5,6 +5,9 @@ from tools.edit_file import edit_file
 from tools.run_command import run_command
 from tools.search_files import search_files
 from tools.search_grep import search_grep
+from tools.remember_fact import remember_fact
+from tools.forget_fact import forget_fact
+from tools.list_facts import list_facts
 
 # Registry of all tools available to the agent
 TOOLS = {
@@ -15,6 +18,9 @@ TOOLS = {
     "run_command": run_command,
     "search_files": search_files,
     "search_grep": search_grep,
+    "remember_fact": remember_fact,
+    "forget_fact": forget_fact,
+    "list_facts": list_facts,
 }
 
 def run_tool(name: str, **kwargs) -> str:

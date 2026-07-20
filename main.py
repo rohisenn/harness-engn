@@ -42,6 +42,7 @@ from agent.llm import LLMClient, LLMError
 from agent.prompts import SYSTEM_PROMPT
 from agent.planning_prompts import PLANNING_SYSTEM_PROMPT, EXECUTION_SYSTEM_PROMPT
 from tools import run_tool
+from agent.memory import load_facts, save_session, generate_session_id
 
 console = Console()
 
@@ -109,15 +110,32 @@ def parse_tool_call(response: str) -> tuple[str, dict[str, str]] | None:
     return tool_name, attrs_dict
 
 
-def run_single_turn(client: LLMClient, task: str) -> str:
+def get_system_prompt(base_prompt: str) -> str:
+    facts = load_facts()
+    if not facts:
+        return base_prompt
+    facts_block = "\n[Repository Facts/Memory]:\n" + "\n".join(f"- {f}" for f in facts) + "\n"
+    intro_end = base_prompt.find("\n")
+    if intro_end != -1:
+        return base_prompt[:intro_end] + "\n" + facts_block + base_prompt[intro_end:]
+    return base_prompt + "\n" + facts_block
+
+
+def run_single_turn(client: LLMClient, task: str, session_id: str | None = None, initial_history: list[dict[str, str]] | None = None) -> str:
     """Send one task to the model, streaming the response to the terminal, executing tools if requested."""
+    if session_id is None:
+        session_id = generate_session_id()
+    if initial_history is None:
+        initial_history = []
     console = get_console(client.config)
-    messages = [{"role": "user", "content": task}]
+    messages = list(initial_history)
+    messages.append({"role": "user", "content": task})
+    save_session(session_id, messages)
 
     while True:
         console.print()
         console.print("[bold cyan]harness is thinking...[/bold cyan]")
-        chunks = list(client.stream(system=SYSTEM_PROMPT, messages=messages))
+        chunks = list(client.stream(system=get_system_prompt(SYSTEM_PROMPT), messages=messages))
         response = "".join(chunks)
 
         tool_info = parse_tool_call(response)
@@ -130,24 +148,33 @@ def run_single_turn(client: LLMClient, task: str) -> str:
                 console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
                 messages.append({"role": "assistant", "content": response})
                 messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+                save_session(session_id, messages)
             else:
                 console.print("[yellow]Tool execution cancelled by user. Returning control to you.[/yellow]")
                 return "Tool execution cancelled by the user."
         else:
             console.print(Panel(Markdown(response), title="harness", border_style="cyan"))
+            messages.append({"role": "assistant", "content": response})
+            save_session(session_id, messages)
             return response
 
 
-def run_single_turn_with_planning(client: LLMClient, task: str) -> str:
+def run_single_turn_with_planning(client: LLMClient, task: str, session_id: str | None = None, initial_history: list[dict[str, str]] | None = None) -> str:
     """Send one task to the model, running a research, planning, and execution loop."""
+    if session_id is None:
+        session_id = generate_session_id()
+    if initial_history is None:
+        initial_history = []
     console = get_console(client.config)
-    messages = [{"role": "user", "content": task}]
+    messages = list(initial_history)
+    messages.append({"role": "user", "content": task})
+    save_session(session_id, messages)
 
     # 1. Research & Planning Phase
     while True:
         console.print()
         console.print("[bold cyan]harness is researching and planning...[/bold cyan]")
-        chunks = list(client.stream(system=PLANNING_SYSTEM_PROMPT, messages=messages))
+        chunks = list(client.stream(system=get_system_prompt(PLANNING_SYSTEM_PROMPT), messages=messages))
         response = "".join(chunks)
 
         tool_info = parse_tool_call(response)
@@ -160,6 +187,7 @@ def run_single_turn_with_planning(client: LLMClient, task: str) -> str:
                 console.print(f"[bold red]{error_msg}[/bold red]")
                 messages.append({"role": "assistant", "content": response})
                 messages.append({"role": "user", "content": error_msg})
+                save_session(session_id, messages)
                 continue
 
             console.print(f"[bold yellow]Tool Call (Planning):[/bold yellow] `{tool_name}` with args {tool_args}")
@@ -168,6 +196,7 @@ def run_single_turn_with_planning(client: LLMClient, task: str) -> str:
                 console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
                 messages.append({"role": "assistant", "content": response})
                 messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+                save_session(session_id, messages)
             else:
                 console.print("[yellow]Tool execution cancelled by user. Returning control to you.[/yellow]")
                 return "Tool execution cancelled by the user during planning."
@@ -194,17 +223,20 @@ def run_single_turn_with_planning(client: LLMClient, task: str) -> str:
                         "role": "user",
                         "content": f"The user rejected the plan. Feedback:\n{feedback}\nPlease update 'plan.md' to reflect this feedback."
                     })
+                    save_session(session_id, messages)
             else:
                 prompt_msg = "Please write the proposed implementation plan to 'plan.md' using the write_file tool."
                 messages.append({"role": "assistant", "content": response})
                 messages.append({"role": "user", "content": prompt_msg})
+                save_session(session_id, messages)
 
     # 2. Execution Phase
     messages.append({"role": "user", "content": "The plan has been approved. Please execute the plan now."})
+    save_session(session_id, messages)
     while True:
         console.print()
         console.print("[bold cyan]harness is executing plan...[/bold cyan]")
-        chunks = list(client.stream(system=EXECUTION_SYSTEM_PROMPT, messages=messages))
+        chunks = list(client.stream(system=get_system_prompt(EXECUTION_SYSTEM_PROMPT), messages=messages))
         response = "".join(chunks)
 
         tool_info = parse_tool_call(response)
@@ -216,21 +248,37 @@ def run_single_turn_with_planning(client: LLMClient, task: str) -> str:
                 console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
                 messages.append({"role": "assistant", "content": response})
                 messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+                save_session(session_id, messages)
             else:
                 console.print("[yellow]Tool execution cancelled by user. Returning control to you.[/yellow]")
                 return "Tool execution cancelled by the user during execution."
         else:
             console.print(Panel(Markdown(response), title="harness (Execution Finished)", border_style="cyan"))
+            messages.append({"role": "assistant", "content": response})
+            save_session(session_id, messages)
             return response
 
 
-def run_interactive(client: LLMClient) -> None:
+def run_interactive(client: LLMClient, session_id: str | None = None, initial_history: list[dict[str, str]] | None = None) -> None:
+    if session_id is None:
+        session_id = generate_session_id()
+    if initial_history is None:
+        initial_history = []
     console = get_console(client.config)
     console.print(
         "[bold cyan]harness[/bold cyan] interactive mode. "
         "Type a task, or 'exit' to quit.\n"
     )
-    history: list[dict[str, str]] = []
+    history = list(initial_history)
+    if history:
+        console.print("[bold yellow]Resumed History:[/bold yellow]")
+        for msg in history:
+            role = "[bold cyan]harness[/bold cyan]" if msg["role"] == "assistant" else "[bold green]user[/bold green]"
+            if msg["role"] == "user" and msg["content"].startswith("[Tool Output"):
+                console.print(f"[bold dim]Tool Output:[/bold dim] [dim]{msg['content'][:150]}...[/dim]")
+            else:
+                console.print(f"{role}: {msg['content']}")
+        console.print("-" * 40)
 
     while True:
         try:
@@ -246,11 +294,12 @@ def run_interactive(client: LLMClient) -> None:
             break
 
         history.append({"role": "user", "content": task})
+        save_session(session_id, history)
 
         while True:
             console.print()
             console.print("[bold cyan]harness is thinking...[/bold cyan]")
-            chunks = list(client.stream(system=SYSTEM_PROMPT, messages=history))
+            chunks = list(client.stream(system=get_system_prompt(SYSTEM_PROMPT), messages=history))
             response = "".join(chunks)
 
             tool_info = parse_tool_call(response)
@@ -263,14 +312,15 @@ def run_interactive(client: LLMClient) -> None:
                     console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
                     history.append({"role": "assistant", "content": response})
                     history.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+                    save_session(session_id, history)
                 else:
                     console.print("[yellow]Tool execution cancelled by user. Returning control to you.[/yellow]")
                     break
             else:
                 console.print(Panel(Markdown(response), title="harness", border_style="cyan"))
                 history.append({"role": "assistant", "content": response})
+                save_session(session_id, history)
                 break
-
 
 @click.command()
 @click.argument("task", required=False)
@@ -290,8 +340,30 @@ def run_interactive(client: LLMClient) -> None:
     is_flag=True,
     help="Skip the planning phase and run the task in one-shot execution mode.",
 )
-def cli(task: str | None, provider: str | None, model: str | None, no_plan: bool) -> None:
+@click.option(
+    "--resume",
+    default=None,
+    help="Resume a previous session by ID or specify 'latest' to resume the most recent session.",
+)
+@click.option(
+    "--sessions",
+    is_flag=True,
+    help="List all saved interactive sessions.",
+)
+def cli(task: str | None, provider: str | None, model: str | None, no_plan: bool, resume: str | None, sessions: bool) -> None:
     """Send TASK to the coding agent. Omit TASK to start interactive mode."""
+    if sessions:
+        from agent.memory import list_sessions
+        saved = list_sessions()
+        if not saved:
+            console.print("No saved sessions found.")
+        else:
+            console.print("[bold cyan]Saved Sessions:[/bold cyan]")
+            for s in saved:
+                console.print(f"  [bold yellow]{s['id']}[/bold yellow] (Modified: {s['timestamp']})")
+                console.print(f"    Preview: {s['preview']}")
+        sys.exit(0)
+
     try:
         config = load_config(provider_override=provider, model_override=model)
         client = LLMClient(config)
@@ -303,18 +375,39 @@ def cli(task: str | None, provider: str | None, model: str | None, no_plan: bool
         f"[dim]provider={config.provider} model={config.active_model}[/dim]"
     )
 
+    session_id = None
+    initial_history = []
+    if resume:
+        from agent.memory import list_sessions, load_session
+        if resume.lower() == "latest":
+            saved = list_sessions()
+            if not saved:
+                console.print("[bold red]Error:[/bold red] No saved sessions found to resume.")
+                sys.exit(1)
+            session_id = saved[0]["id"]
+        else:
+            session_id = resume
+        
+        try:
+            initial_history = load_session(session_id)
+            console.print(f"[bold green]Resumed session: {session_id}[/bold green]")
+        except FileNotFoundError:
+            console.print(f"[bold red]Error:[/bold red] Session '{session_id}' not found.")
+            sys.exit(1)
+    else:
+        from agent.memory import generate_session_id
+        session_id = generate_session_id()
+
     if task:
         try:
             if no_plan:
-                run_single_turn(client, task)
+                run_single_turn(client, task, session_id, initial_history)
             else:
-                run_single_turn_with_planning(client, task)
+                run_single_turn_with_planning(client, task, session_id, initial_history)
         except LLMError as exc:
             console.print(f"[bold red]Error:[/bold red] {exc}")
             sys.exit(1)
     else:
-        run_interactive(client)
-
-
+        run_interactive(client, session_id, initial_history)
 if __name__ == "__main__":
     cli()

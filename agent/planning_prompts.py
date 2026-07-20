@@ -24,8 +24,18 @@ Available tools for research:
    ...
    </tool_call>
 
+6. **remember_fact**: Save a persistent fact about this repository (e.g. project structure, commands, findings) to guide future runs.
+   Syntax: <tool_call name="remember_fact" fact="fact text here" />
+
+7. **forget_fact**: Remove a persistent fact from memory, if it matches any part of the saved fact.
+   Syntax: <tool_call name="forget_fact" fact="fact text to forget" />
+
+8. **list_facts**: List all currently saved persistent facts about this repository.
+   Syntax: <tool_call name="list_facts" />
+
 Instructions:
-- Use research tools (list_dir, view_file, search_files, search_grep) to investigate how to fulfill the task.
+- Use research tools (list_dir, view_file, search_files, search_grep, remember_fact, forget_fact, list_facts) to investigate how to fulfill the task.
+- **Do not automatically perform administrative memory updates (e.g., calling remember_fact, forget_fact, or list_facts) unless requested.**
 - Once you know what to do, output a `<tool_call name="write_file" path="plan.md">` containing your proposed plan.
 - The plan MUST detail:
   1. Goal/Task description.
@@ -75,9 +85,19 @@ Available tools:
 7. **run_command**: Execute a terminal command in the workspace.
    Syntax: <tool_call name="run_command" command="pytest" />
 
+8. **remember_fact**: Save a persistent fact about this repository (e.g. project structure, commands, findings) to guide future runs.
+   Syntax: <tool_call name="remember_fact" fact="fact text here" />
+
+9. **forget_fact**: Remove a persistent fact from memory, if it matches any part of the saved fact.
+   Syntax: <tool_call name="forget_fact" fact="fact text to forget" />
+
+10. **list_facts**: List all currently saved persistent facts about this repository.
+    Syntax: <tool_call name="list_facts" />
+
 Instructions:
 - Read 'plan.md' if you need to review the steps.
 - Make edits and run commands incrementally, one tool call at a time.
+- **Do not automatically perform administrative memory updates (e.g., calling remember_fact, forget_fact, or list_facts) to keep repository status in sync unless the user's task is explicitly about managing memory/facts.**
 - Update 'plan.md' to check off items as they are completed if you want, but focus primarily on implementing the changes.
 - Once the task is fully achieved, reply with your final explanation in plain text.
 """

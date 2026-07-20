@@ -15,7 +15,7 @@ def is_sensitive_path(path: str) -> bool:
         if part_lower.startswith(".env") and not part_lower.endswith(".example"):
             return True
         # Prevent accessing version control, virtual envs, or test caches
-        if part_lower in (".git", "venv", ".venv", ".pytest_cache"):
+        if part_lower in (".git", "venv", ".venv", ".pytest_cache", ".harness"):
             return True
             
     return False
