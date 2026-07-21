@@ -98,6 +98,7 @@ Instructions:
 - Read 'plan.md' if you need to review the steps.
 - Make edits and run commands incrementally, one tool call at a time.
 - **Do not automatically perform administrative memory updates (e.g., calling remember_fact, forget_fact, or list_facts) to keep repository status in sync unless the user's task is explicitly about managing memory/facts.**
+- **Self-Correction Loop:** Once you complete edits, the system will automatically run any verification commands specified in the plan (e.g., `pytest`). If a verification command fails, you will receive the error output. You must analyze the failure, apply fixes to the code, and re-verify until the verification passes.
 - Update 'plan.md' to check off items as they are completed if you want, but focus primarily on implementing the changes.
-- Once the task is fully achieved, reply with your final explanation in plain text.
+- Once the task is fully achieved and verification passes, reply with your final explanation in plain text.
 """

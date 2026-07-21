@@ -27,6 +27,9 @@ class Config:
     groq_model: str
     max_tokens: int
     color: bool = True
+    verify_cmd: str | None = None
+    max_correct: int = 3
+    auto_correct: bool = False
 
     @property
     def active_model(self) -> str:
@@ -45,7 +48,13 @@ class Config:
         return None
 
 
-def load_config(provider_override: str | None = None, model_override: str | None = None) -> Config:
+def load_config(
+    provider_override: str | None = None,
+    model_override: str | None = None,
+    verify_cmd_override: str | None = None,
+    max_correct_override: int | None = None,
+    auto_correct_override: bool | None = None,
+) -> Config:
     provider = (provider_override or os.getenv("HARNESS_PROVIDER", "gemini")).lower()
 
     if provider not in ("gemini", "groq", "grok"):
@@ -64,6 +73,24 @@ def load_config(provider_override: str | None = None, model_override: str | None
     harness_color_env = os.getenv("HARNESS_COLOR", "true").lower()
     color = not no_color and (harness_color_env not in ("false", "0", "no"))
 
+    # Load verify command from env or override
+    verify_cmd = verify_cmd_override or os.getenv("HARNESS_VERIFY_CMD")
+
+    # Load max correct limit
+    max_correct_env = os.getenv("HARNESS_MAX_CORRECT", "3")
+    try:
+        max_correct = int(max_correct_env)
+    except ValueError:
+        max_correct = 3
+    if max_correct_override is not None:
+        max_correct = max_correct_override
+
+    # Load auto correct flag
+    auto_correct_env = os.getenv("HARNESS_AUTO_CORRECT", "false").lower()
+    auto_correct = auto_correct_env in ("true", "1", "yes")
+    if auto_correct_override is not None:
+        auto_correct = auto_correct_override
+
     return Config(
         provider=provider,
         gemini_api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
@@ -72,4 +99,7 @@ def load_config(provider_override: str | None = None, model_override: str | None
         groq_model=groq_model,
         max_tokens=int(os.getenv("HARNESS_MAX_TOKENS", "4096")),
         color=color,
+        verify_cmd=verify_cmd,
+        max_correct=max_correct,
+        auto_correct=auto_correct,
     )

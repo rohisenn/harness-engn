@@ -258,7 +258,91 @@ def run_single_turn_with_planning(client: LLMClient, task: str, session_id: str 
             console.print(Panel(Markdown(response), title="harness (Execution Finished)", border_style="cyan"))
             messages.append({"role": "assistant", "content": response})
             save_session(session_id, messages)
-            return response
+
+            # --- Verification and Self-Correction Loop ---
+            verify_commands = []
+            if client.config.verify_cmd:
+                verify_commands = [client.config.verify_cmd]
+            elif os.path.exists("plan.md"):
+                try:
+                    with open("plan.md", "r", encoding="utf-8") as f:
+                        plan_content = f.read()
+                    from agent.correction import extract_verification_commands
+                    verify_commands = extract_verification_commands(plan_content)
+                except Exception as e:
+                    console.print(f"[bold red]Failed to read plan.md or extract verification commands: {e}[/bold red]")
+
+            if not verify_commands:
+                console.print("[yellow]No verification commands specified or found in plan.md. Skipping verification.[/yellow]")
+                return response
+
+            from agent.correction import run_verification_command, get_correction_prompt
+            correction_attempts = 0
+            max_correct = client.config.max_correct
+
+            while True:
+                failures = []
+                for cmd in verify_commands:
+                    console.print(f"[bold blue]Running verification command:[/bold blue] `{cmd}`")
+                    exit_code, output = run_verification_command(cmd)
+                    if exit_code != 0:
+                        failures.append((cmd, exit_code, output))
+                        console.print(f"[bold red]Verification command '{cmd}' failed (exit code {exit_code}).[/bold red]")
+                        preview = "\n".join(output.splitlines()[:10])
+                        console.print(f"[dim]{preview}[/dim]")
+                        if len(output.splitlines()) > 10:
+                            console.print(f"[dim]... ({len(output.splitlines()) - 10} more lines omitted)[/dim]")
+                    else:
+                        console.print(f"[bold green]Verification command '{cmd}' succeeded (exit code 0).[/bold green]")
+
+                if not failures:
+                    console.print("[bold green]All verification commands passed successfully![/bold green]")
+                    return response
+
+                if correction_attempts >= max_correct:
+                    console.print(f"[bold red]Reached maximum correction attempts ({max_correct}). Verification failed.[/bold red]")
+                    return f"Verification failed after {max_correct} correction attempts. Output of last failure:\n{failures[0][2]}"
+
+                correction_attempts += 1
+                prompt = "\n\n".join(get_correction_prompt(cmd, code, out) for cmd, code, out in failures)
+                console.print(f"[bold yellow]Entering self-correction loop (Attempt {correction_attempts}/{max_correct})...[/bold yellow]")
+
+                messages.append({"role": "user", "content": prompt})
+                save_session(session_id, messages)
+
+                # Inner loop for correction edits
+                while True:
+                    console.print()
+                    console.print(f"[bold cyan]harness is correcting (Attempt {correction_attempts})...[/bold cyan]")
+                    chunks = list(client.stream(system=get_system_prompt(EXECUTION_SYSTEM_PROMPT), messages=messages))
+                    response = "".join(chunks)
+
+                    tool_info = parse_tool_call(response)
+                    if tool_info:
+                        tool_name, tool_args = tool_info
+                        console.print(f"[bold yellow]Tool Call (Correction):[/bold yellow] `{tool_name}` with args {tool_args}")
+
+                        should_approve = False
+                        if client.config.auto_correct:
+                            console.print("[bold green]Auto-approving tool call in auto-correction mode.[/bold green]")
+                            should_approve = True
+                        else:
+                            should_approve = click.confirm("Do you want to execute this tool call?", default=True)
+
+                        if should_approve:
+                            result = run_tool(tool_name, **tool_args)
+                            console.print(f"[bold green]Tool Output (first 100 chars):[/bold green]\n{result[:100]}...")
+                            messages.append({"role": "assistant", "content": response})
+                            messages.append({"role": "user", "content": f"[Tool Output for {tool_name}]:\n{result}"})
+                            save_session(session_id, messages)
+                        else:
+                            console.print("[yellow]Tool execution cancelled by user during correction.[/yellow]")
+                            return "Tool execution cancelled by the user during correction."
+                    else:
+                        console.print(Panel(Markdown(response), title=f"harness (Correction Attempt {correction_attempts} Finished)", border_style="cyan"))
+                        messages.append({"role": "assistant", "content": response})
+                        save_session(session_id, messages)
+                        break
 
 
 def run_interactive(client: LLMClient, session_id: str | None = None, initial_history: list[dict[str, str]] | None = None) -> None:
@@ -352,7 +436,33 @@ def run_interactive(client: LLMClient, session_id: str | None = None, initial_hi
     is_flag=True,
     help="List all saved interactive sessions.",
 )
-def cli(task: str | None, provider: str | None, model: str | None, no_plan: bool, resume: str | None, sessions: bool) -> None:
+@click.option(
+    "--verify-cmd",
+    default=None,
+    help="Command to verify changes (e.g. 'pytest'). Overrides plan.md.",
+)
+@click.option(
+    "--max-correct",
+    type=int,
+    default=None,
+    help="Maximum number of self-correction attempts (default: 3).",
+)
+@click.option(
+    "--auto-correct",
+    is_flag=True,
+    help="Automatically execute tools without confirmation during the self-correction loop.",
+)
+def cli(
+    task: str | None,
+    provider: str | None,
+    model: str | None,
+    no_plan: bool,
+    resume: str | None,
+    sessions: bool,
+    verify_cmd: str | None,
+    max_correct: int | None,
+    auto_correct: bool,
+) -> None:
     """Send TASK to the coding agent. Omit TASK to start interactive mode."""
     if sessions:
         from agent.memory import list_sessions
@@ -367,7 +477,13 @@ def cli(task: str | None, provider: str | None, model: str | None, no_plan: bool
         sys.exit(0)
 
     try:
-        config = load_config(provider_override=provider, model_override=model)
+        config = load_config(
+            provider_override=provider,
+            model_override=model,
+            verify_cmd_override=verify_cmd,
+            max_correct_override=max_correct,
+            auto_correct_override=auto_correct,
+        )
         client = LLMClient(config)
     except LLMError as exc:
         console.print(f"[bold red]Configuration error:[/bold red] {exc}")

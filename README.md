@@ -21,8 +21,8 @@ below is a fully working system in itself, not a stub.
 - [x] Milestone 4 — Execute terminal commands
 - [x] Milestone 5 — Repository search
 - [x] Milestone 6 — Planning
-- [ ] Milestone 7 — Memory
-- [ ] Milestone 8 — Self-correction loop
+- [x] Milestone 7 — Memory
+- [/] Milestone 8 — Self-correction loop
 - [ ] Milestone 9 — Git integration
 - [ ] Milestone 10 — Multi-agent collaboration
 
