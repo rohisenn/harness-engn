@@ -51,3 +51,24 @@ def test_config_color(monkeypatch):
     config = load_config()
     assert config.color is False
 
+
+def test_config_git_integration(monkeypatch):
+    monkeypatch.delenv("HARNESS_GIT_INTEGRATION", raising=False)
+    monkeypatch.delenv("HARNESS_GIT_BRANCH_PREFIX", raising=False)
+    
+    config = load_config()
+    assert config.git_integration is False
+    assert config.git_branch_prefix == "harness/"
+
+    monkeypatch.setenv("HARNESS_GIT_INTEGRATION", "true")
+    monkeypatch.setenv("HARNESS_GIT_BRANCH_PREFIX", "test-prefix/")
+    config = load_config()
+    assert config.git_integration is True
+    assert config.git_branch_prefix == "test-prefix/"
+
+    # Test overrides
+    config = load_config(git_integration_override=False, git_branch_prefix_override="override/")
+    assert config.git_integration is False
+    assert config.git_branch_prefix == "override/"
+
+

@@ -33,8 +33,8 @@ def is_sensitive_command(command: str) -> bool:
     if ".env" in cleaned_cmd:
         return True
         
-    # Check for version control access (.git)
-    if ".git" in cmd_lower:
+    # Check for version control access (.git folder)
+    if re.search(r'\b\.git\b', cmd_lower):
         return True
         
     # Check for harness directory (.harness) or test cache (.pytest_cache)

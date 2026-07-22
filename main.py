@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import subprocess
 
 def init_win_ansi():
     """Enable Virtual Terminal Processing on Windows to support ANSI escape sequences (colors, spinners)."""
@@ -45,6 +46,141 @@ from tools import run_tool
 from agent.memory import load_facts, save_session, generate_session_id
 
 console = Console()
+
+
+def is_git_repo() -> bool:
+    try:
+        res = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], capture_output=True, text=True)
+        return res.returncode == 0 and "true" in res.stdout.lower()
+    except Exception:
+        return False
+
+
+def sanitize_branch_name(task_desc: str) -> str:
+    s = task_desc.lower()
+    s = re.sub(r'[^a-z0-9]+', '-', s)
+    s = s.strip('-')
+    return s[:30]
+
+
+def setup_git_branch(config: Config, task_desc: str) -> str:
+    if not is_git_repo():
+        raise Exception("Not a git repository.")
+    slug = sanitize_branch_name(task_desc)
+    branch_name = f"{config.git_branch_prefix}task-{slug}"
+    # Try creating branch
+    res = subprocess.run(["git", "checkout", "-b", branch_name], capture_output=True, text=True)
+    if res.returncode != 0:
+        # Already exists, just checkout
+        res = subprocess.run(["git", "checkout", branch_name], capture_output=True, text=True)
+        if res.returncode != 0:
+            raise Exception(f"Failed to create or checkout branch '{branch_name}': {res.stderr}")
+    return branch_name
+
+
+def handle_git_success(client: LLMClient, console: Console) -> None:
+    # 1. Get status of modified/untracked files
+    res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+    if res.returncode != 0:
+        console.print("[bold red]Git success handler: git status failed.[/bold red]")
+        return
+
+    files_to_add = []
+    for line in res.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        status_code = line[:2]
+        filepath = line[3:].strip()
+        # Clean quotes if any
+        if filepath.startswith('"') and filepath.endswith('"'):
+            filepath = filepath[1:-1]
+        
+        # Verify it's not sensitive
+        from tools.security import is_sensitive_path
+        if not is_sensitive_path(filepath):
+            files_to_add.append(filepath)
+
+    if not files_to_add:
+        console.print("[yellow]Git: No modified files to commit.[/yellow]")
+        return
+
+    # Add files
+    add_res = subprocess.run(["git", "add"] + files_to_add, capture_output=True, text=True)
+    if add_res.returncode != 0:
+        console.print(f"[bold red]Git: Failed to stage files: {add_res.stderr}[/bold red]")
+        return
+
+    # 2. Get git diff of staged files to generate commit message
+    diff_res = subprocess.run(["git", "diff", "--cached"], capture_output=True, text=True)
+    staged_diff = diff_res.stdout
+    if not staged_diff.strip():
+        console.print("[yellow]Git: Staged diff is empty. Skipping commit.[/yellow]")
+        return
+
+    # 3. Call LLM to generate commit message and PR description
+    console.print("[bold cyan]Git: Requesting LLM to generate commit message and PR description...[/bold cyan]")
+    
+    prompt = f"""You are a Git assistant. All implementation and verification steps for the current coding task have succeeded.
+Below is the diff of the changes made to the repository.
+Please generate:
+1. A concise, descriptive commit message (max 72 characters, preferably in conventional commit format like `feat: add ...` or `fix: resolve ...`).
+2. A detailed Pull Request description in markdown format summarizing the changes, the files modified, and the verification results.
+
+Format your response EXACTLY like this:
+<commit_message>
+[Your commit message here]
+</commit_message>
+<pr_description>
+[Your markdown PR description here]
+</pr_description>
+
+Here is the diff:
+--------------------------------------------------
+{{staged_diff[:8000]}}
+--------------------------------------------------
+"""
+    try:
+        # Request standard stream response from LLM, combine chunks
+        response_chunks = list(client.stream(
+            system="You are a helpful git helper assistant.",
+            messages=[{"role": "user", "content": prompt}]
+        ))
+        llm_out = "".join(response_chunks)
+        
+        commit_msg = "feat: implement coding task"
+        pr_desc = "# Pull Request\n\nTask implemented successfully."
+        
+        commit_match = re.search(r'<commit_message>(.*?)</commit_message>', llm_out, re.DOTALL)
+        if commit_match:
+            commit_msg = commit_match.group(1).strip()
+            
+        pr_match = re.search(r'<pr_description>(.*?)</pr_description>', llm_out, re.DOTALL)
+        if pr_match:
+            pr_desc = pr_match.group(1).strip()
+            
+    except Exception as e:
+        console.print(f"[bold yellow]Git: LLM request failed ({e}). Using default commit message.[/bold yellow]")
+        commit_msg = "feat: implement coding task"
+        pr_desc = f"# Pull Request\n\nChanges:\n" + "\n".join(f"- {f}" for f in files_to_add)
+
+    # 4. Commit changes
+    commit_res = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
+    if commit_res.returncode != 0:
+        console.print(f"[bold red]Git: Commit failed: {commit_res.stderr}[/bold red]")
+        return
+        
+    # Get short commit hash
+    hash_res = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
+    commit_hash = hash_res.stdout.strip()
+    
+    # 5. Write PR description file
+    pr_file = "PR_DESCRIPTION.md"
+    try:
+        with open(pr_file, "w", encoding="utf-8") as f:
+            f.write(pr_desc)
+        console.print(f"[bold green]Git: Successfully committed changes [{commit_hash}] and wrote PR description to {pr_file}![/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Git: Failed to write PR description file: {e}[/bold red]")
 
 
 def get_console(config: Config) -> Console:
@@ -158,6 +294,8 @@ def run_single_turn(client: LLMClient, task: str, session_id: str | None = None,
             console.print(Panel(Markdown(response), title="harness", border_style="cyan"))
             messages.append({"role": "assistant", "content": response})
             save_session(session_id, messages)
+            if client.config.git_integration:
+                handle_git_success(client, console)
             return response
 
 
@@ -274,6 +412,8 @@ def run_single_turn_with_planning(client: LLMClient, task: str, session_id: str 
 
             if not verify_commands:
                 console.print("[yellow]No verification commands specified or found in plan.md. Skipping verification.[/yellow]")
+                if client.config.git_integration:
+                    handle_git_success(client, console)
                 return response
 
             from agent.correction import run_verification_command, get_correction_prompt
@@ -297,6 +437,8 @@ def run_single_turn_with_planning(client: LLMClient, task: str, session_id: str 
 
                 if not failures:
                     console.print("[bold green]All verification commands passed successfully![/bold green]")
+                    if client.config.git_integration:
+                        handle_git_success(client, console)
                     return response
 
                 if correction_attempts >= max_correct:
@@ -452,6 +594,11 @@ def run_interactive(client: LLMClient, session_id: str | None = None, initial_hi
     is_flag=True,
     help="Automatically execute tools without confirmation during the self-correction loop.",
 )
+@click.option(
+    "--git",
+    is_flag=True,
+    help="Enable Git integration (auto-branching and committing on success).",
+)
 def cli(
     task: str | None,
     provider: str | None,
@@ -462,6 +609,7 @@ def cli(
     verify_cmd: str | None,
     max_correct: int | None,
     auto_correct: bool,
+    git: bool,
 ) -> None:
     """Send TASK to the coding agent. Omit TASK to start interactive mode."""
     if sessions:
@@ -483,6 +631,7 @@ def cli(
             verify_cmd_override=verify_cmd,
             max_correct_override=max_correct,
             auto_correct_override=auto_correct,
+            git_integration_override=git,
         )
         client = LLMClient(config)
     except LLMError as exc:
@@ -517,6 +666,14 @@ def cli(
         session_id = generate_session_id()
 
     if task:
+        if config.git_integration:
+            try:
+                branch_name = setup_git_branch(config, task)
+                console.print(f"[bold green]Git: Created/Checked out branch '{branch_name}'[/bold green]")
+            except Exception as e:
+                console.print(f"[bold red]Git branch setup failed: {e}[/bold red]")
+                sys.exit(1)
+
         try:
             if no_plan:
                 run_single_turn(client, task, session_id, initial_history)

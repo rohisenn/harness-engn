@@ -38,7 +38,7 @@ Available tools:
 6. **search_grep**: Search for exact text matches of a query within file contents.
    Syntax: <tool_call name="search_grep" query="search_query" path="optional/path/to/search" />
 
-7. **run_command**: Execute a terminal command in the workspace.
+7. **run_command**: Execute a terminal command in the workspace. Note: on Windows cmd.exe, use double quotes for string arguments (e.g. `pytest -m "test"`).
    Syntax: <tool_call name="run_command" command="pytest" />
 
 8. **remember_fact**: Save a persistent fact about this repository (e.g. project structure, commands, findings) to guide future runs.
@@ -49,6 +49,24 @@ Available tools:
 
 10. **list_facts**: List all currently saved persistent facts about this repository.
     Syntax: <tool_call name="list_facts" />
+
+11. **git_status**: Show git status.
+    Syntax: <tool_call name="git_status" />
+
+12. **git_diff**: Show git diff.
+    Syntax: <tool_call name="git_diff" path="optional/file/path" />
+
+13. **git_add**: Stage files for commit.
+    Syntax: <tool_call name="git_add" paths="path/to/file1 path/to/file2" />
+
+14. **git_commit**: Commit staged changes.
+    Syntax: <tool_call name="git_commit" message="Commit message here" />
+
+15. **git_checkout**: Checkout a branch.
+    Syntax: <tool_call name="git_checkout" branch="branch-name" />
+
+16. **git_push**: Push commits to a remote.
+    Syntax: <tool_call name="git_push" branch="optional-branch" />
 
 Instructions for tool use:
 - Choose the most specific tool. Prefer `edit_file` over `write_file` for small modifications to existing files.

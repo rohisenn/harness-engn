@@ -8,6 +8,7 @@ from tools.search_grep import search_grep
 from tools.remember_fact import remember_fact
 from tools.forget_fact import forget_fact
 from tools.list_facts import list_facts
+from tools.git_tool import git_status, git_diff, git_add, git_commit, git_checkout, git_push
 
 # Registry of all tools available to the agent
 TOOLS = {
@@ -21,6 +22,12 @@ TOOLS = {
     "remember_fact": remember_fact,
     "forget_fact": forget_fact,
     "list_facts": list_facts,
+    "git_status": git_status,
+    "git_diff": git_diff,
+    "git_add": git_add,
+    "git_commit": git_commit,
+    "git_checkout": git_checkout,
+    "git_push": git_push,
 }
 
 def run_tool(name: str, **kwargs) -> str:

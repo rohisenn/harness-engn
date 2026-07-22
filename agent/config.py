@@ -30,6 +30,8 @@ class Config:
     verify_cmd: str | None = None
     max_correct: int = 3
     auto_correct: bool = False
+    git_integration: bool = False
+    git_branch_prefix: str = "harness/"
 
     @property
     def active_model(self) -> str:
@@ -54,6 +56,8 @@ def load_config(
     verify_cmd_override: str | None = None,
     max_correct_override: int | None = None,
     auto_correct_override: bool | None = None,
+    git_integration_override: bool | None = None,
+    git_branch_prefix_override: str | None = None,
 ) -> Config:
     provider = (provider_override or os.getenv("HARNESS_PROVIDER", "gemini")).lower()
 
@@ -91,6 +95,15 @@ def load_config(
     if auto_correct_override is not None:
         auto_correct = auto_correct_override
 
+    # Load git integration flag
+    git_integration_env = os.getenv("HARNESS_GIT_INTEGRATION", "false").lower()
+    git_integration = git_integration_env in ("true", "1", "yes")
+    if git_integration_override is not None:
+        git_integration = git_integration_override
+
+    # Load git branch prefix
+    git_branch_prefix = git_branch_prefix_override or os.getenv("HARNESS_GIT_BRANCH_PREFIX", "harness/")
+
     return Config(
         provider=provider,
         gemini_api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
@@ -102,4 +115,6 @@ def load_config(
         verify_cmd=verify_cmd,
         max_correct=max_correct,
         auto_correct=auto_correct,
+        git_integration=git_integration,
+        git_branch_prefix=git_branch_prefix,
     )
