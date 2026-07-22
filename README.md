@@ -23,8 +23,9 @@ below is a fully working system in itself, not a stub.
 - [x] Milestone 6 — Planning
 - [x] Milestone 7 — Memory
 - [x] Milestone 8 — Self-correction loop
-- [/] Milestone 9 — Git integration
-- [ ] Milestone 10 — Multi-agent collaboration
+- [x] Milestone 9 — Git integration
+- [x] Milestone 10 — Multi-agent collaboration
+- [x] Milestone 11 — Context compression
 
 ## Setup
 

@@ -44,6 +44,7 @@ from agent.prompts import SYSTEM_PROMPT
 from agent.planning_prompts import PLANNING_SYSTEM_PROMPT, EXECUTION_SYSTEM_PROMPT
 from tools import run_tool
 from agent.memory import load_facts, save_session, generate_session_id
+from agent.context import maybe_compress
 
 console = Console()
 
@@ -182,6 +183,20 @@ Here is the diff:
     except Exception as e:
         console.print(f"[bold red]Git: Failed to write PR description file: {e}[/bold red]")
 
+    # 6. Optionally push changes to remote
+    if client.config.git_push:
+        console.print("[bold cyan]Git: Pushing commits to remote...[/bold cyan]")
+        branch_res = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True)
+        branch_name = branch_res.stdout.strip()
+        if branch_name:
+            push_res = subprocess.run(["git", "push", "origin", branch_name], capture_output=True, text=True)
+            if push_res.returncode == 0:
+                console.print(f"[bold green]Git: Successfully pushed branch '{branch_name}' to remote![/bold green]")
+            else:
+                console.print(f"[bold red]Git: Push failed: {push_res.stderr.strip() or push_res.stdout.strip()}[/bold red]")
+        else:
+            console.print("[bold red]Git: Could not determine current branch name for pushing.[/bold red]")
+
 
 def get_console(config: Config) -> Console:
     """Returns a Console configured with or without colors depending on config settings."""
@@ -273,6 +288,9 @@ def run_single_turn(client: LLMClient, task: str, session_id: str | None = None,
     while True:
         console.print()
         console.print("[bold cyan]harness is thinking...[/bold cyan]")
+        messages, compressed = maybe_compress(client, messages, client.config.context_window, client.config.compress_tail)
+        if compressed:
+            console.print("[dim]Context compressed.[/dim]")
         chunks = list(client.stream(system=get_system_prompt(SYSTEM_PROMPT), messages=messages))
         response = "".join(chunks)
 
@@ -314,6 +332,9 @@ def run_single_turn_with_planning(client: LLMClient, task: str, session_id: str 
     while True:
         console.print()
         console.print("[bold cyan]harness is researching and planning...[/bold cyan]")
+        messages, compressed = maybe_compress(client, messages, client.config.context_window, client.config.compress_tail)
+        if compressed:
+            console.print("[dim]Context compressed.[/dim]")
         chunks = list(client.stream(system=get_system_prompt(PLANNING_SYSTEM_PROMPT), messages=messages))
         response = "".join(chunks)
 
@@ -376,6 +397,9 @@ def run_single_turn_with_planning(client: LLMClient, task: str, session_id: str 
     while True:
         console.print()
         console.print("[bold cyan]harness is executing plan...[/bold cyan]")
+        messages, compressed = maybe_compress(client, messages, client.config.context_window, client.config.compress_tail)
+        if compressed:
+            console.print("[dim]Context compressed.[/dim]")
         chunks = list(client.stream(system=get_system_prompt(EXECUTION_SYSTEM_PROMPT), messages=messages))
         response = "".join(chunks)
 
@@ -456,6 +480,9 @@ def run_single_turn_with_planning(client: LLMClient, task: str, session_id: str 
                 while True:
                     console.print()
                     console.print(f"[bold cyan]harness is correcting (Attempt {correction_attempts})...[/bold cyan]")
+                    messages, compressed = maybe_compress(client, messages, client.config.context_window, client.config.compress_tail)
+                    if compressed:
+                        console.print("[dim]Context compressed.[/dim]")
                     chunks = list(client.stream(system=get_system_prompt(EXECUTION_SYSTEM_PROMPT), messages=messages))
                     response = "".join(chunks)
 
@@ -527,6 +554,9 @@ def run_interactive(client: LLMClient, session_id: str | None = None, initial_hi
         while True:
             console.print()
             console.print("[bold cyan]harness is thinking...[/bold cyan]")
+            history, compressed = maybe_compress(client, history, client.config.context_window, client.config.compress_tail)
+            if compressed:
+                console.print("[dim]Context compressed.[/dim]")
             chunks = list(client.stream(system=get_system_prompt(SYSTEM_PROMPT), messages=history))
             response = "".join(chunks)
 
@@ -599,6 +629,16 @@ def run_interactive(client: LLMClient, session_id: str | None = None, initial_hi
     is_flag=True,
     help="Enable Git integration (auto-branching and committing on success).",
 )
+@click.option(
+    "--git-push",
+    is_flag=True,
+    help="Enable automatic Git push of the created branch on success.",
+)
+@click.option(
+    "--multi",
+    is_flag=True,
+    help="Enable Multi-Agent Collaboration mode.",
+)
 def cli(
     task: str | None,
     provider: str | None,
@@ -610,6 +650,8 @@ def cli(
     max_correct: int | None,
     auto_correct: bool,
     git: bool,
+    git_push: bool,
+    multi: bool,
 ) -> None:
     """Send TASK to the coding agent. Omit TASK to start interactive mode."""
     if sessions:
@@ -632,6 +674,7 @@ def cli(
             max_correct_override=max_correct,
             auto_correct_override=auto_correct,
             git_integration_override=git,
+            git_push_override=git_push,
         )
         client = LLMClient(config)
     except LLMError as exc:
@@ -675,7 +718,10 @@ def cli(
                 sys.exit(1)
 
         try:
-            if no_plan:
+            if multi:
+                from agent.multi_agent import run_multi_agent_session
+                run_multi_agent_session(client, task, session_id, initial_history)
+            elif no_plan:
                 run_single_turn(client, task, session_id, initial_history)
             else:
                 run_single_turn_with_planning(client, task, session_id, initial_history)

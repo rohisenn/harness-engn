@@ -32,6 +32,9 @@ class Config:
     auto_correct: bool = False
     git_integration: bool = False
     git_branch_prefix: str = "harness/"
+    git_push: bool = False
+    context_window: int = 6000
+    compress_tail: int = 10
 
     @property
     def active_model(self) -> str:
@@ -58,6 +61,7 @@ def load_config(
     auto_correct_override: bool | None = None,
     git_integration_override: bool | None = None,
     git_branch_prefix_override: str | None = None,
+    git_push_override: bool | None = None,
 ) -> Config:
     provider = (provider_override or os.getenv("HARNESS_PROVIDER", "gemini")).lower()
 
@@ -104,6 +108,15 @@ def load_config(
     # Load git branch prefix
     git_branch_prefix = git_branch_prefix_override or os.getenv("HARNESS_GIT_BRANCH_PREFIX", "harness/")
 
+    # Load git push flag
+    git_push_env = os.getenv("HARNESS_GIT_PUSH", "false").lower()
+    git_push = git_push_env in ("true", "1", "yes")
+    if git_push_override is not None:
+        git_push = git_push_override
+
+    context_window = int(os.getenv("HARNESS_CONTEXT_WINDOW", "6000"))
+    compress_tail = int(os.getenv("HARNESS_COMPRESS_TAIL", "10"))
+
     return Config(
         provider=provider,
         gemini_api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
@@ -117,4 +130,7 @@ def load_config(
         auto_correct=auto_correct,
         git_integration=git_integration,
         git_branch_prefix=git_branch_prefix,
+        git_push=git_push,
+        context_window=context_window,
+        compress_tail=compress_tail,
     )

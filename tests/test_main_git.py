@@ -1,7 +1,7 @@
 import os
 import subprocess
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from agent.config import Config
 from agent.llm import LLMClient
 from main import setup_git_branch, handle_git_success, sanitize_branch_name
@@ -115,3 +115,53 @@ def test_handle_git_success_no_changes(temp_git_repo):
     
     # Verify print was called informing no changes
     mock_console.print.assert_any_call("[yellow]Git: No modified files to commit.[/yellow]")
+
+
+def test_handle_git_success_commit_and_push(temp_git_repo):
+    config = Config(
+        provider="gemini",
+        gemini_api_key="fake",
+        gemini_model="gemini-3.5-flash",
+        groq_api_key=None,
+        groq_model="llama-3.3-70b-versatile",
+        max_tokens=4096,
+        git_integration=True,
+        git_push=True,
+    )
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.config = config
+
+    # Stub client stream to return formatted XML
+    xml_response = (
+        "<commit_message>feat: add push test logic</commit_message>\n"
+        "<pr_description>\n"
+        "# Integration Push Test\n\n"
+        "Testing remote push logic.\n"
+        "</pr_description>"
+    )
+    mock_client.stream.return_value = iter([xml_response])
+
+    # Create changes in repo
+    new_file = temp_git_repo / "pushed_module.py"
+    new_file.write_text("print('push me')", encoding="utf-8")
+
+    mock_console = MagicMock()
+
+    # Mock subprocess.run for git push specifically, while letting other git commands run
+    orig_run = subprocess.run
+    def mock_run_cmd(args, **kwargs):
+        if "push" in args:
+            # Mock success of push
+            return MagicMock(returncode=0, stdout="Pushed successfully", stderr="")
+        return orig_run(args, **kwargs)
+
+    with patch("subprocess.run", side_effect=mock_run_cmd):
+        handle_git_success(mock_client, mock_console)
+
+    # Verify commit log matches
+    res_log = orig_run(["git", "log", "-1", "--pretty=%B"], capture_output=True, text=True)
+    assert "feat: add push test logic" in res_log.stdout
+
+    # Verify console output indicates success push
+    mock_console.print.assert_any_call("[bold green]Git: Successfully pushed branch 'main' to remote![/bold green]")
+
