@@ -104,12 +104,9 @@ def test_prompt_injection():
     injected = get_system_prompt(base_prompt)
     assert "[Repository Facts/Memory]:" in injected
     assert "- First fact" in injected
-    # Should insert after the first line (intro)
-    lines = injected.split("\n")
-    assert lines[0] == "You are harness."
-    assert lines[1] == ""
-    assert lines[2] == "[Repository Facts/Memory]:"
-    assert lines[3] == "- First fact"
+    # Should append after the base prompt
+    assert injected.startswith(base_prompt)
+    assert injected.endswith("- First fact")
 
 def test_list_facts_tool():
     # Empty memory

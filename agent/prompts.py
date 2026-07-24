@@ -77,6 +77,15 @@ Instructions for tool use:
 - Once the task is fully achieved, reply with your final explanation in plain text.
 """
 
+NEW_PROJECT_HINT = """\
+[New Project Mode]
+The current directory is empty. You are scaffolding a brand-new project from scratch.
+- Start by creating the full project structure: directories, source files, config files, dependency manifests (e.g. requirements.txt, package.json, go.mod).
+- Initialize a git repository with `run_command` if appropriate.
+- Install dependencies and verify the project runs before finishing.
+- Do not assume any files exist — create everything the project needs.
+"""
+
 COORDINATOR_SYSTEM_PROMPT = """\
 You are the Coordinator Agent for harness, a multi-agent coding system.
 Your job is to oversee the execution of a software engineering task. You coordinate between the Researcher, Planner, Coder, and QA Agent.

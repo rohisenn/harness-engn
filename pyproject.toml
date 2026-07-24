@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "harness"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.50.0",
+    "rich>=13.7.0",
+    "python-dotenv>=1.0.1",
+    "click>=8.1.7",
+    "google-genai",
+]
+
+[project.scripts]
+harness = "harness_main:cli"
+
+[tool.setuptools]
+py-modules = ["harness_main", "main"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent*", "tools*"]

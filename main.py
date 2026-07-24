@@ -40,7 +40,7 @@ from rich.panel import Panel
 
 from agent.config import load_config, Config
 from agent.llm import LLMClient, LLMError
-from agent.prompts import SYSTEM_PROMPT
+from agent.prompts import SYSTEM_PROMPT, NEW_PROJECT_HINT
 from agent.planning_prompts import PLANNING_SYSTEM_PROMPT, EXECUTION_SYSTEM_PROMPT
 from tools import run_tool
 from agent.memory import load_facts, save_session, generate_session_id
@@ -263,15 +263,20 @@ def parse_tool_call(response: str) -> tuple[str, dict[str, str]] | None:
     return tool_name, attrs_dict
 
 
+def is_empty_dir() -> bool:
+    """Returns True if cwd has no user files (ignores hidden dirs like .harness, .git)."""
+    entries = [e for e in os.listdir(".") if not e.startswith(".")]
+    return len(entries) == 0
+
+
 def get_system_prompt(base_prompt: str) -> str:
+    parts = [base_prompt]
+    if is_empty_dir():
+        parts.append(NEW_PROJECT_HINT)
     facts = load_facts()
-    if not facts:
-        return base_prompt
-    facts_block = "\n[Repository Facts/Memory]:\n" + "\n".join(f"- {f}" for f in facts) + "\n"
-    intro_end = base_prompt.find("\n")
-    if intro_end != -1:
-        return base_prompt[:intro_end] + "\n" + facts_block + base_prompt[intro_end:]
-    return base_prompt + "\n" + facts_block
+    if facts:
+        parts.append("[Repository Facts/Memory]:\n" + "\n".join(f"- {f}" for f in facts))
+    return "\n".join(parts)
 
 
 def run_single_turn(client: LLMClient, task: str, session_id: str | None = None, initial_history: list[dict[str, str]] | None = None) -> str:
@@ -684,6 +689,14 @@ def cli(
     console.print(
         f"[dim]provider={config.provider} model={config.active_model}[/dim]"
     )
+
+    if is_empty_dir():
+        console.print(Panel(
+            "[bold green]New project mode[/bold green] — current directory is empty.\n"
+            "Describe what you want to build and harness will scaffold it from scratch.",
+            border_style="green",
+            title="harness"
+        ))
 
     session_id = None
     initial_history = []
