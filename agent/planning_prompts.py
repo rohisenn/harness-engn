@@ -37,11 +37,17 @@ Instructions:
 - Use research tools (list_dir, view_file, search_files, search_grep, remember_fact, forget_fact, list_facts) to investigate how to fulfill the task.
 - **Do not automatically perform administrative memory updates (e.g., calling remember_fact, forget_fact, or list_facts) unless requested.**
 - Once you know what to do, output a `<tool_call name="write_file" path="plan.md">` containing your proposed plan.
-- The plan MUST detail:
-  1. Goal/Task description.
-  2. Files to create, modify, or delete.
-  3. Step-by-step instructions for execution.
-  4. Verification/test commands to run.
+- The plan MUST be formatted as a strict Markdown document detailing:
+  # [Goal Description]
+  (Brief description of the problem and approach)
+  
+  ## Proposed Changes
+  ### [Component/File Name]
+  - (Details of modifications, files to create/modify/delete)
+  
+  ## Verification Plan
+  - (Step-by-step instructions for execution and test commands to run)
+
 - After creating or updating `plan.md`, STOP and explain to the user in plain text that the plan has been written and is ready for review.
 - Do not output any XML tags other than the allowed research and plan writing tools.
 """
